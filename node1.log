@@ -1,0 +1,152 @@
+INFO [03-28|11:12:22.472] Maximum peer count                       ETH=50 total=50
+ERROR[03-28|11:12:22.475] The static-nodes.json file is deprecated and ignored. Use P2P.StaticNodes in config.toml instead.
+INFO [03-28|11:12:22.487] Set global gas cap                       cap=50,000,000
+INFO [03-28|11:12:22.488] Initializing the KZG library             backend=gokzg
+INFO [03-28|11:12:22.540] Allocated trie memory caches             clean=154.00MiB dirty=256.00MiB
+INFO [03-28|11:12:22.540] Using pebble as the backing database
+INFO [03-28|11:12:22.540] Allocated cache and file handles         database=/home/sura/logchain/node1/geth/chaindata cache=512.00MiB handles=262,144
+INFO [03-28|11:12:22.569] Opened ancient database                  database=/home/sura/logchain/node1/geth/chaindata/ancient/chain readonly=false
+INFO [03-28|11:12:22.571] State scheme set to already existing     scheme=hash
+INFO [03-28|11:12:22.572] Initialising Ethereum protocol           network=12345 dbversion=8
+INFO [03-28|11:12:22.572] 
+INFO [03-28|11:12:22.572] ---------------------------------------------------------------------------------------------------------------------------------------------------------
+INFO [03-28|11:12:22.572] Chain ID:  12345 (unknown)
+INFO [03-28|11:12:22.572] Consensus: Clique (proof-of-authority)
+INFO [03-28|11:12:22.572] 
+INFO [03-28|11:12:22.572] Pre-Merge hard forks (block based):
+INFO [03-28|11:12:22.572]  - Homestead:                   #0        (https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/homestead.md)
+INFO [03-28|11:12:22.572]  - Tangerine Whistle (EIP 150): #0        (https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/tangerine-whistle.md)
+INFO [03-28|11:12:22.572]  - Spurious Dragon/1 (EIP 155): #0        (https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/spurious-dragon.md)
+INFO [03-28|11:12:22.572]  - Spurious Dragon/2 (EIP 158): #0        (https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/spurious-dragon.md)
+INFO [03-28|11:12:22.572]  - Byzantium:                   #0        (https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/byzantium.md)
+INFO [03-28|11:12:22.572]  - Constantinople:              #0        (https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/constantinople.md)
+INFO [03-28|11:12:22.572]  - Petersburg:                  #0        (https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/petersburg.md)
+INFO [03-28|11:12:22.572]  - Istanbul:                    #0        (https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/istanbul.md)
+INFO [03-28|11:12:22.572]  - Berlin:                      #<nil> (https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/berlin.md)
+INFO [03-28|11:12:22.572]  - London:                      #<nil> (https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/london.md)
+INFO [03-28|11:12:22.572] 
+INFO [03-28|11:12:22.572] The Merge is not yet available for this network!
+INFO [03-28|11:12:22.572]  - Hard-fork specification: https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/paris.md
+INFO [03-28|11:12:22.572] 
+INFO [03-28|11:12:22.572] Post-Merge hard forks (timestamp based):
+INFO [03-28|11:12:22.572] 
+INFO [03-28|11:12:22.572] ---------------------------------------------------------------------------------------------------------------------------------------------------------
+INFO [03-28|11:12:22.572] 
+INFO [03-28|11:12:22.573] Loaded most recent local block           number=3957 hash=8d92da..982be0 td=7915 age=4s
+INFO [03-28|11:12:22.684] Initialized transaction indexer          range="last 2350000 blocks"
+INFO [03-28|11:12:22.684] Loaded local transaction journal         transactions=0 dropped=0
+WARN [03-28|11:12:22.689] Switch sync mode from snap sync to full sync reason="snap sync complete"
+INFO [03-28|11:12:22.690] Gasprice oracle is ignoring threshold set threshold=2
+WARN [03-28|11:12:22.696] Unclean shutdown detected                booted=2026-03-26T12:56:57+0530 age=1d22h15m
+WARN [03-28|11:12:22.696] Unclean shutdown detected                booted=2026-03-26T12:57:23+0530 age=1d22h14m
+WARN [03-28|11:12:22.696] Engine API enabled                       protocol=eth
+WARN [03-28|11:12:22.696] Engine API started but chain not configured for merge yet
+INFO [03-28|11:12:22.696] Starting peer-to-peer node               instance=Geth/v1.13.14-stable-2bd6bd01/linux-amd64/go1.21.6
+INFO [03-28|11:12:22.712] IPC endpoint opened                      url=/home/sura/logchain/node1/geth.ipc
+INFO [03-28|11:12:22.713] New local node record                    seq=1,774,510,121,991 id=9802710c107888f9 ip=127.0.0.1 udp=0 tcp=30311
+INFO [03-28|11:12:22.713] Started P2P networking                   self="enode://697d555df59d7790c94b650c735aa7dcbf10e9627a744c31f261a608e906d6a67d78f055570e22db98f26fab87d2dba9ebd6b3c11fb2bff83d91ea2ba76552dd@127.0.0.1:30311?discport=0"
+INFO [03-28|11:12:22.713] Loaded JWT secret file                   path=/home/sura/logchain/node1/geth/jwtsecret crc32=0x1b5430bd
+INFO [03-28|11:12:22.714] HTTP server started                      endpoint=[::]:8545 auth=false prefix= cors=* vhosts=localhost
+INFO [03-28|11:12:22.715] WebSocket enabled                        url=ws://127.0.0.1:8551
+INFO [03-28|11:12:22.715] HTTP server started                      endpoint=127.0.0.1:8551 auth=true  prefix= cors=localhost vhosts=localhost
+INFO [03-28|11:12:23.583] Unlocked account                         address=0x8b629ce3BB085B061D95C7f0d14d2BF63ECbA758
+INFO [03-28|11:12:23.583] Legacy pool tip threshold updated        tip=0
+INFO [03-28|11:12:23.583] Legacy pool tip threshold updated        tip=1,000,000,000
+INFO [03-28|11:12:23.583] Commit new sealing work                  number=3958 sealhash=c66a1d..87d0fe txs=0 gas=0 fees=0 elapsed="121.981µs"
+WARN [03-28|11:12:23.584] Block sealing failed                     err="signed recently, must wait for others"
+INFO [03-28|11:12:32.823] Looking for peers                        peercount=1 tried=0 static=1
+INFO [03-28|11:12:32.830] Block synchronisation started
+INFO [03-28|11:12:32.850] Mining aborted due to sync
+INFO [03-28|11:12:32.885] Imported new chain segment               number=3958 hash=f765ad..ad71dd blocks=1 txs=0 mgas=0.000 elapsed=6.951ms     mgasps=0.000 snapdiffs=136.60KiB triedirty=0.00B
+INFO [03-28|11:12:32.886] Commit new sealing work                  number=3959 sealhash=1a83d9..01eb42 txs=0 gas=0 fees=0 elapsed="395.657µs"
+INFO [03-28|11:12:32.891] Successfully sealed new block            number=3959 sealhash=1a83d9..01eb42 hash=7acca2..550ab3 elapsed=5.095ms
+INFO [03-28|11:12:32.892] Commit new sealing work                  number=3960 sealhash=728b6c..e42d20 txs=0 gas=0 fees=0 elapsed="913.906µs"
+WARN [03-28|11:12:32.892] Block sealing failed                     err="signed recently, must wait for others"
+INFO [03-28|11:12:37.694] Imported new chain segment               number=3960 hash=a197cc..9f79ca blocks=1 txs=0 mgas=0.000 elapsed=9.780ms     mgasps=0.000 snapdiffs=136.60KiB triedirty=0.00B
+INFO [03-28|11:12:37.695] Commit new sealing work                  number=3961 sealhash=71c977..7e89e5 txs=0 gas=0 fees=0 elapsed="405.605µs"
+INFO [03-28|11:12:42.032] Successfully sealed new block            number=3961 sealhash=71c977..7e89e5 hash=50821b..f29762 elapsed=4.337s
+INFO [03-28|11:12:42.032] Commit new sealing work                  number=3962 sealhash=95464b..acddd9 txs=0 gas=0 fees=0 elapsed="569.368µs"
+WARN [03-28|11:12:42.032] Block sealing failed                     err="signed recently, must wait for others"
+INFO [03-28|11:12:47.716] Imported new chain segment               number=3962 hash=f614bf..2da5ad blocks=1 txs=0 mgas=0.000 elapsed=31.269ms    mgasps=0.000 snapdiffs=136.60KiB triedirty=0.00B
+INFO [03-28|11:12:47.716] Commit new sealing work                  number=3963 sealhash=f3d1ca..5481a8 txs=0 gas=0 fees=0 elapsed="252.066µs"
+INFO [03-28|11:12:52.010] Successfully sealed new block            number=3963 sealhash=f3d1ca..5481a8 hash=b67027..f210b0 elapsed=4.293s
+INFO [03-28|11:12:52.011] Commit new sealing work                  number=3964 sealhash=3a2b5f..1db3e1 txs=0 gas=0 fees=0 elapsed="660.707µs"
+WARN [03-28|11:12:52.011] Block sealing failed                     err="signed recently, must wait for others"
+INFO [03-28|11:12:57.692] Imported new chain segment               number=3964 hash=a7e16c..4a72f9 blocks=1 txs=0 mgas=0.000 elapsed=7.587ms     mgasps=0.000 snapdiffs=136.60KiB triedirty=0.00B
+INFO [03-28|11:12:57.693] Commit new sealing work                  number=3965 sealhash=def7df..e1c8ff txs=0 gas=0 fees=0 elapsed="439.176µs"
+INFO [03-28|11:13:02.009] Successfully sealed new block            number=3965 sealhash=def7df..e1c8ff hash=e8e4e3..e98e3a elapsed=4.316s
+INFO [03-28|11:13:02.010] Commit new sealing work                  number=3966 sealhash=d580da..8d4446 txs=0 gas=0 fees=0 elapsed=1.047ms
+WARN [03-28|11:13:02.010] Block sealing failed                     err="signed recently, must wait for others"
+INFO [03-28|11:13:07.398] Looking for peers                        peercount=1 tried=1 static=1
+INFO [03-28|11:13:07.691] Imported new chain segment               number=3966 hash=0d6284..013295 blocks=1 txs=0 mgas=0.000 elapsed=7.154ms     mgasps=0.000 snapdiffs=136.60KiB triedirty=0.00B
+INFO [03-28|11:13:07.691] Commit new sealing work                  number=3967 sealhash=6d3257..4f96b3 txs=0 gas=0 fees=0 elapsed="266.037µs"
+INFO [03-28|11:13:08.898] Setting new local account                address=0x8b629ce3BB085B061D95C7f0d14d2BF63ECbA758
+INFO [03-28|11:13:08.898] Submitted transaction                    hash=0x21b44397247e5ca48a32ba14263a351f6b6133b86401faf767a14b71a15630bb from=0x8b629ce3BB085B061D95C7f0d14d2BF63ECbA758 nonce=770 recipient=0x898ed5b8d8703459c5DcD4BF0fA5D01c934D0762 value=0
+INFO [03-28|11:13:08.907] Submitted transaction                    hash=0x6422dd6b603e5802ebfbf455ee431cc52115c9b7aa972a6ca7fc348d3d589ebb from=0x8b629ce3BB085B061D95C7f0d14d2BF63ECbA758 nonce=771 recipient=0x898ed5b8d8703459c5DcD4BF0fA5D01c934D0762 value=0
+INFO [03-28|11:13:08.916] Submitted transaction                    hash=0xa9f56a47be8a4b23f6fcf6b8a258bd38af553e5b5ed5ab0e04d7cfca0a4d37ec from=0x8b629ce3BB085B061D95C7f0d14d2BF63ECbA758 nonce=772 recipient=0x898ed5b8d8703459c5DcD4BF0fA5D01c934D0762 value=0
+INFO [03-28|11:13:09.695] Commit new sealing work                  number=3967 sealhash=dd1a14..ad004d txs=3 gas=289,815 fees=0.00057963 elapsed=3.247ms
+INFO [03-28|11:13:12.009] Successfully sealed new block            number=3967 sealhash=dd1a14..ad004d hash=f5f8d9..ee1074 elapsed=2.314s
+INFO [03-28|11:13:12.012] Commit new sealing work                  number=3968 sealhash=1f48c3..5dc885 txs=0 gas=0       fees=0          elapsed=2.448ms
+WARN [03-28|11:13:12.012] Block sealing failed                     err="signed recently, must wait for others"
+INFO [03-28|11:13:16.811] Submitted transaction                    hash=0x52d5c5596f122b74fbad16dd3128c20d738cf4cd727b396bb539ab30efcf09f4 from=0x8b629ce3BB085B061D95C7f0d14d2BF63ECbA758 nonce=773 recipient=0x898ed5b8d8703459c5DcD4BF0fA5D01c934D0762 value=0
+INFO [03-28|11:13:16.822] Submitted transaction                    hash=0x935ad8fabf7362694de63813b760b8a3a0a48a0946179c19317d6deb6b25f744 from=0x8b629ce3BB085B061D95C7f0d14d2BF63ECbA758 nonce=774 recipient=0x898ed5b8d8703459c5DcD4BF0fA5D01c934D0762 value=0
+INFO [03-28|11:13:16.834] Submitted transaction                    hash=0xbcf0e469a7f0df7b19403eec137ff6c7e7bae0722e00121669fd5df4112614bb from=0x8b629ce3BB085B061D95C7f0d14d2BF63ECbA758 nonce=775 recipient=0x898ed5b8d8703459c5DcD4BF0fA5D01c934D0762 value=0
+INFO [03-28|11:13:16.845] Submitted transaction                    hash=0xf6ba706964f10e8c339f224c93ac97a521a56eb7b885ade4c56c424824d51a47 from=0x8b629ce3BB085B061D95C7f0d14d2BF63ECbA758 nonce=776 recipient=0x898ed5b8d8703459c5DcD4BF0fA5D01c934D0762 value=0
+INFO [03-28|11:13:17.719] Imported new chain segment               number=3968 hash=0b88d4..5ecde4 blocks=1 txs=0 mgas=0.000 elapsed=34.448ms    mgasps=0.000 snapdiffs=137.25KiB triedirty=13.70KiB
+INFO [03-28|11:13:17.722] Commit new sealing work                  number=3969 sealhash=9db033..235e25 txs=4 gas=386,420 fees=0.00077284 elapsed=2.866ms
+INFO [03-28|11:13:22.009] Successfully sealed new block            number=3969 sealhash=9db033..235e25 hash=b1a34e..0a12be elapsed=4.287s
+INFO [03-28|11:13:22.012] Commit new sealing work                  number=3970 sealhash=71a9d8..cbc46a txs=0 gas=0       fees=0          elapsed=1.947ms
+WARN [03-28|11:13:22.012] Block sealing failed                     err="signed recently, must wait for others"
+INFO [03-28|11:13:27.692] Imported new chain segment               number=3970 hash=546055..d5b345 blocks=1 txs=0 mgas=0.000 elapsed=8.143ms     mgasps=0.000 snapdiffs=138.07KiB triedirty=29.78KiB
+INFO [03-28|11:13:27.693] Commit new sealing work                  number=3971 sealhash=37e82b..33faad txs=0 gas=0       fees=0          elapsed="399.777µs"
+INFO [03-28|11:13:32.009] Successfully sealed new block            number=3971 sealhash=37e82b..33faad hash=b5504d..d3ab44 elapsed=4.316s
+INFO [03-28|11:13:32.011] Commit new sealing work                  number=3972 sealhash=91b9b0..f2fd18 txs=0 gas=0       fees=0          elapsed="968.77µs"
+WARN [03-28|11:13:32.011] Block sealing failed                     err="signed recently, must wait for others"
+INFO [03-28|11:13:37.691] Imported new chain segment               number=3972 hash=ede538..a8ded1 blocks=1 txs=0 mgas=0.000 elapsed=6.737ms     mgasps=0.000 snapdiffs=138.07KiB triedirty=29.78KiB
+INFO [03-28|11:13:37.692] Commit new sealing work                  number=3973 sealhash=d0cbfb..921a4d txs=0 gas=0       fees=0          elapsed="329.329µs"
+INFO [03-28|11:13:42.032] Successfully sealed new block            number=3973 sealhash=d0cbfb..921a4d hash=ad1ccc..d6e211 elapsed=4.340s
+INFO [03-28|11:13:42.034] Commit new sealing work                  number=3974 sealhash=d4dd7e..3432b8 txs=0 gas=0       fees=0          elapsed=1.220ms
+WARN [03-28|11:13:42.034] Block sealing failed                     err="signed recently, must wait for others"
+INFO [03-28|11:13:47.692] Imported new chain segment               number=3974 hash=52be60..08b1ef blocks=1 txs=0 mgas=0.000 elapsed=8.064ms     mgasps=0.000 snapdiffs=138.07KiB triedirty=29.78KiB
+INFO [03-28|11:13:47.693] Commit new sealing work                  number=3975 sealhash=c828d4..55f29d txs=0 gas=0       fees=0          elapsed="364.119µs"
+INFO [03-28|11:13:52.008] Successfully sealed new block            number=3975 sealhash=c828d4..55f29d hash=304d1b..9734f1 elapsed=4.315s
+INFO [03-28|11:13:52.009] Commit new sealing work                  number=3976 sealhash=45ad4e..1e1c0f txs=0 gas=0       fees=0          elapsed="776.303µs"
+WARN [03-28|11:13:52.009] Block sealing failed                     err="signed recently, must wait for others"
+INFO [03-28|11:13:57.715] Imported new chain segment               number=3976 hash=fedef2..2e18f4 blocks=1 txs=0 mgas=0.000 elapsed=31.262ms    mgasps=0.000 snapdiffs=138.07KiB triedirty=29.78KiB
+INFO [03-28|11:13:57.716] Commit new sealing work                  number=3977 sealhash=395596..35d021 txs=0 gas=0       fees=0          elapsed="432.783µs"
+INFO [03-28|11:14:02.034] Successfully sealed new block            number=3977 sealhash=395596..35d021 hash=959e17..5d7c6f elapsed=4.317s
+INFO [03-28|11:14:02.035] Commit new sealing work                  number=3978 sealhash=73f8e7..a50c05 txs=0 gas=0       fees=0          elapsed=1.100ms
+WARN [03-28|11:14:02.035] Block sealing failed                     err="signed recently, must wait for others"
+INFO [03-28|11:14:07.693] Imported new chain segment               number=3978 hash=245dca..37ac10 blocks=1 txs=0 mgas=0.000 elapsed=8.413ms     mgasps=0.000 snapdiffs=138.07KiB triedirty=29.78KiB
+INFO [03-28|11:14:07.693] Commit new sealing work                  number=3979 sealhash=f3727a..62a3e2 txs=0 gas=0       fees=0          elapsed="357.455µs"
+INFO [03-28|11:14:12.006] Successfully sealed new block            number=3979 sealhash=f3727a..62a3e2 hash=02725c..1b1c23 elapsed=4.312s
+INFO [03-28|11:14:12.007] Commit new sealing work                  number=3980 sealhash=23094b..220f93 txs=0 gas=0       fees=0          elapsed="899.313µs"
+WARN [03-28|11:14:12.007] Block sealing failed                     err="signed recently, must wait for others"
+INFO [03-28|11:14:17.889] Imported new chain segment               number=3980 hash=77e111..115234 blocks=1 txs=0 mgas=0.000 elapsed=205.314ms   mgasps=0.000 snapdiffs=138.07KiB triedirty=29.78KiB
+INFO [03-28|11:14:17.890] Commit new sealing work                  number=3981 sealhash=8d0345..41f647 txs=0 gas=0       fees=0          elapsed="434.668µs"
+INFO [03-28|11:14:22.035] Successfully sealed new block            number=3981 sealhash=8d0345..41f647 hash=8316e6..bdf7c1 elapsed=4.145s
+INFO [03-28|11:14:22.036] Commit new sealing work                  number=3982 sealhash=d964d8..e351a6 txs=0 gas=0       fees=0          elapsed="806.899µs"
+WARN [03-28|11:14:22.036] Block sealing failed                     err="signed recently, must wait for others"
+INFO [03-28|11:14:27.692] Imported new chain segment               number=3982 hash=59ebd9..e7b19e blocks=1 txs=0 mgas=0.000 elapsed=7.086ms     mgasps=0.000 snapdiffs=138.07KiB triedirty=29.78KiB
+INFO [03-28|11:14:27.692] Commit new sealing work                  number=3983 sealhash=66f34c..bd73d1 txs=0 gas=0       fees=0          elapsed="300.552µs"
+INFO [03-28|11:14:32.032] Successfully sealed new block            number=3983 sealhash=66f34c..bd73d1 hash=da83be..bc3d8f elapsed=4.339s
+INFO [03-28|11:14:32.033] Commit new sealing work                  number=3984 sealhash=0322d9..a29c05 txs=0 gas=0       fees=0          elapsed=1.273ms
+WARN [03-28|11:14:32.033] Block sealing failed                     err="signed recently, must wait for others"
+INFO [03-28|11:14:37.689] Got interrupt, shutting down...
+INFO [03-28|11:14:37.689] HTTP server stopped                      endpoint=[::]:8545
+INFO [03-28|11:14:37.690] HTTP server stopped                      endpoint=127.0.0.1:8551
+INFO [03-28|11:14:37.690] IPC endpoint closed                      url=/home/sura/logchain/node1/geth.ipc
+INFO [03-28|11:14:37.690] Ethereum protocol stopped
+INFO [03-28|11:14:37.690] Transaction pool stopped
+INFO [03-28|11:14:37.690] Looking for peers                        peercount=0 tried=0 static=1
+INFO [03-28|11:14:37.693] Imported new chain segment               number=3984 hash=95fa87..14a42b blocks=1 txs=0 mgas=0.000 elapsed=9.242ms     mgasps=0.000 snapdiffs=138.07KiB triedirty=29.78KiB
+INFO [03-28|11:14:37.694] Commit new sealing work                  number=3985 sealhash=13240c..42e4b0 txs=0 gas=0       fees=0          elapsed="329.592µs"
+INFO [03-28|11:14:37.720] Writing cached state to disk             block=3984 hash=95fa87..14a42b root=bae5d8..2b090a
+INFO [03-28|11:14:37.722] Persisted trie from memory database      nodes=78 size=16.44KiB time=2.689886ms gcnodes=0 gcsize=0.00B gctime=0s livenodes=13 livesize=4.04KiB
+INFO [03-28|11:14:37.723] Writing cached state to disk             block=3983 hash=da83be..bc3d8f root=bae5d8..2b090a
+INFO [03-28|11:14:37.723] Persisted trie from memory database      nodes=0  size=0.00B    time="11.466µs" gcnodes=0 gcsize=0.00B gctime=0s livenodes=13 livesize=4.04KiB
+INFO [03-28|11:14:37.723] Writing cached state to disk             block=3857 hash=e78e47..821b1c root=d7ade5..893d85
+INFO [03-28|11:14:37.723] Persisted trie from memory database      nodes=0  size=0.00B    time="3.662µs"  gcnodes=0 gcsize=0.00B gctime=0s livenodes=13 livesize=4.04KiB
+INFO [03-28|11:14:37.723] Writing snapshot state to disk           root=9f3a5f..47ea66
+INFO [03-28|11:14:37.723] Persisted trie from memory database      nodes=0  size=0.00B    time="2.221µs"  gcnodes=0 gcsize=0.00B gctime=0s livenodes=13 livesize=4.04KiB
+INFO [03-28|11:14:37.723] Blockchain stopped

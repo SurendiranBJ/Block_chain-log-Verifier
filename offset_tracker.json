@@ -1,0 +1,17 @@
+{
+  "CASE-2024-004": {
+    "last_line_count": 4,
+    "last_file_size": 134,
+    "last_run": "2026-03-26T15:37:28"
+  },
+  "CASE-2024-004::/home/sura/logchain/logs/investigator_log.txt": {
+    "last_line_count": 4,
+    "last_file_size": 133,
+    "last_run": "2026-03-26T16:03:03"
+  },
+  "CASE-2024-0078::/home/sura/logchain/sample log/sam1.log": {
+    "last_line_count": 94,
+    "last_file_size": 5894,
+    "last_run": "2026-03-28T11:13:22"
+  }
+}

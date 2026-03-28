@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Activity Logger</title>
+</head>
+<body>
+    <h2>Activity Tracking Running...</h2>
+
+<script>
+function sendLog(data) {
+    fetch('/log', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    });
+}
+
+// Throttled mouse movement (avoid overload)
+let lastMove = 0;
+document.addEventListener("mousemove", (e) => {
+    let now = Date.now();
+    if (now - lastMove > 200) {
+        sendLog({
+            type: "mousemove",
+            x: e.clientX,
+            y: e.clientY
+        });
+        lastMove = now;
+    }
+});
+
+// Click
+document.addEventListener("click", (e) => {
+    sendLog({
+        type: "click",
+        x: e.clientX,
+        y: e.clientY
+    });
+});
+
+// Keyboard
+document.addEventListener("keydown", (e) => {
+    sendLog({
+        type: "keydown",
+        key: e.key
+    });
+});
+
+// Scroll
+window.addEventListener("scroll", () => {
+    sendLog({
+        type: "scroll",
+        scrollY: window.scrollY
+    });
+});
+</script>
+
+</body>
+</html>
