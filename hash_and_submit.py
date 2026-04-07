@@ -10,7 +10,7 @@ from web3 import Web3
 from merkle import build_merkle_tree
 
 # ── Config ────────────────────────────────────────────────────────
-RPC_URL              = "http://10.80.255.210:8545"
+RPC_URL              = "http://10.28.109.210:8545"
 CONTRACT_ADDRESS_V1  = "0xE89d89d78b1a2BBA11Cb36C0750c28cBbd118862"
 CONTRACT_ADDRESS_V2  = "0x898ed5b8d8703459c5DcD4BF0fA5D01c934D0762"
 PRIVATE_KEY          = "0x9c7bf0754e9b13d38d2b71a69da799f76545991b97918ae1e000f400437d51b2"

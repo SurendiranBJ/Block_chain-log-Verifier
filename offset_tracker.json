@@ -10,8 +10,53 @@
     "last_run": "2026-03-26T16:03:03"
   },
   "CASE-2024-0078::/home/sura/logchain/sample log/sam1.log": {
-    "last_line_count": 94,
-    "last_file_size": 5894,
-    "last_run": "2026-03-28T11:13:22"
+    "last_line_count": 168,
+    "last_file_size": 10586,
+    "last_run": "2026-03-28T14:59:38"
+  },
+  "CASE-2024-0078::/home/sura/logchain/sample log/sam2.log": {
+    "last_line_count": 26,
+    "last_file_size": 1649,
+    "last_run": "2026-03-28T14:58:43"
+  },
+  "CASE-2024-0076::/home/sura/logchain/sample log/sam1.log": {
+    "last_line_count": 168,
+    "last_file_size": 10586,
+    "last_run": "2026-03-28T15:00:13"
+  },
+  "CASE-2024-0077::/home/sura/logchain/sample log/sam1.log": {
+    "last_line_count": 168,
+    "last_file_size": 10586,
+    "last_run": "2026-03-28T15:00:53"
+  },
+  "CASE-2024-0079::/home/sura/logchain/sample log/sam2.log": {
+    "last_line_count": 8,
+    "last_file_size": 492,
+    "last_run": "2026-03-28T15:06:40"
+  },
+  "CASE-2024-0072::/home/sura/logchain/sample log/sam2.log": {
+    "last_line_count": 14,
+    "last_file_size": 939,
+    "last_run": "2026-03-28T15:08:10"
+  },
+  "case 1::/home/sura/logchain/sample log/sam2.log": {
+    "last_line_count": 20,
+    "last_file_size": 1318,
+    "last_run": "2026-03-28T15:09:05"
+  },
+  "case 2::/home/sura/logchain/sample log/sam2.log": {
+    "last_line_count": 71,
+    "last_file_size": 4461,
+    "last_run": "2026-03-28T15:38:32"
+  },
+  "case 78::/home/sura/logchain/sample log/sam2.log": {
+    "last_line_count": 71,
+    "last_file_size": 4461,
+    "last_run": "2026-03-28T15:38:57"
+  },
+  "case 7::/home/sura/logchain/sample log/sam3.log": {
+    "last_line_count": 13,
+    "last_file_size": 764,
+    "last_run": "2026-03-28T15:44:23"
   }
 }

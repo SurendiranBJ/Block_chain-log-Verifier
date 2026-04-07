@@ -3,7 +3,7 @@ import datetime
 
 app = Flask(__name__)
 
-LOG_FILE = "sam1.log"
+LOG_FILE = "sam3.log"
 
 @app.route('/')
 def index():

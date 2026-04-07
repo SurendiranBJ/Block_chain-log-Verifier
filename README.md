@@ -24,5 +24,5 @@ Python files on PC1 ~/logchain/: app.py (Flask dashboard port 5000, AJAX polling
 Config: config.json has LOG_FILE and CASE_ID. Current case: CASE-2024-0078, log file: /home/sura/logchain/sample log/sam1.log.
 Startup: PC2 runs ~/start_node2.sh, PC1 runs ~/logchain/start_all.sh. Both scripts ask for current IP since DHCP changes it daily and update all files automatically.
 What is working: 2-node blockchain, both contracts deployed, per-line tamper detection, AJAX live dashboard, background daemon, Merkle tree, watchdog file monitoring, IP auto-update script.
-What is NOT done: ECDSA digital signatures, email/SMS alerts on tamper, PDF report export, user login for dashboard.
+What is NOT done: ECDSA digital signatures, PDF report export, user login for dashboard.
 Please help me continue building or improving this system."

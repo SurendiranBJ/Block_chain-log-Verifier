@@ -36,7 +36,7 @@ class LogMonitor:
         self.node2_status = {"connected": False, "block": 0}
 
         self.w3       = Web3(Web3.HTTPProvider(RPC_URL))
-        self.w3_node2 = Web3(Web3.HTTPProvider("http://10.80.255.234:8546"))
+        self.w3_node2 = Web3(Web3.HTTPProvider("http://10.28.109.234:8546"))
 
         if self.w3.is_connected() and os.path.exists(ABI_V2_PATH):
             with open(ABI_V2_PATH) as f:
