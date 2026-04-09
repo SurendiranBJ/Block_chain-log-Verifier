@@ -5,7 +5,10 @@ echo "======================================"
 
 pkill -f geth
 pkill -f app.py
+pkill -f app_auth.py
 pkill -f watcher.py
+pkill -f watcher_multiuser.py
+pkill -f dashboard_app.py
 pkill -f monitor.py
 
 sleep 2
@@ -19,14 +22,17 @@ else
   echo "✅ Geth stopped"
 fi
 
-if pgrep -f app.py > /dev/null; then
+if pgrep -f "app_auth.py\|app.py" > /dev/null; then
   echo "⚠️  Flask still running — force killing..."
+  pkill -9 -f app_auth.py
   pkill -9 -f app.py
 else
   echo "✅ Flask stopped"
 fi
 
-if pgrep -f watcher.py > /dev/null; then
+if pgrep -f "watcher_multiuser.py\|watcher.py" > /dev/null; then
+  echo "⚠️  Watcher still running — force killing..."
+  pkill -9 -f watcher_multiuser.py
   pkill -9 -f watcher.py
 else
   echo "✅ Watcher stopped"

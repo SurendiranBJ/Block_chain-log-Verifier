@@ -26,7 +26,7 @@ fi
 # Step 3 — Update all IPs in all files
 echo ""
 echo "Updating IPs in all files..."
-for f in ~/logchain/app.py ~/logchain/watcher.py ~/logchain/hash_and_submit.py ~/logchain/deploy_v2.py ~/logchain/hardhat.config.js; do
+for f in ~/logchain/app.py ~/logchain/app_auth.py ~/logchain/watcher.py ~/logchain/watcher_multiuser.py ~/logchain/hash_and_submit.py ~/logchain/deploy_v2.py ~/logchain/hardhat.config.js; do
   if [ -f "$f" ]; then
     sed -i "s|http://[0-9.]*:8545|http://$PC1_IP:8545|g" "$f"
     sed -i "s|http://[0-9.]*:8546|http://$PC2_IP:8546|g" "$f"
@@ -41,7 +41,10 @@ echo ""
 echo "Killing old processes..."
 pkill -f geth
 pkill -f app.py
+pkill -f app_auth.py
 pkill -f watcher.py
+pkill -f watcher_multiuser.py
+pkill -f dashboard_app.py
 sleep 3
 
 # Step 5 — Start Node 1
@@ -76,21 +79,54 @@ PEERS=$(curl -s -X POST http://127.0.0.1:8545 \
   --data '{"jsonrpc":"2.0","method":"net_peerCount","params":[],"id":1}')
 echo "Peer status: $PEERS"
 
-# Step 7 — Start Flask dashboard
+# Step 7 — Ensure MongoDB is running
 echo ""
-echo "Starting Flask dashboard..."
-cd ~/logchain && nohup python3 app.py > ~/logchain/app.log 2>&1 &
+echo "Checking MongoDB..."
+if ! pgrep -x mongod > /dev/null; then
+  echo "Starting MongoDB..."
+  sudo systemctl start mongod 2>/dev/null || sudo service mongod start 2>/dev/null || echo "⚠️  Could not auto-start mongod. Please start it manually."
+else
+  echo "✅ MongoDB is running"
+fi
+
+# Step 8 — Ensure admin user exists in MongoDB
+echo "Ensuring admin user exists..."
+python3 -c "
+from models import Database
+try:
+    db = Database()
+    if not db.get_user_by_username('admin'):
+        db.create_user('admin', 'admin123', 'admin@example.com', 'admin')
+        print('✅ Default admin user created: admin / admin123')
+    else:
+        print('✅ Admin user already exists')
+except Exception as e:
+    print(f'⚠️  MongoDB check: {e}')
+" 2>/dev/null
+
+# Step 9 — Start Multi-User Watcher Daemon
+echo ""
+echo "Starting Multi-User Watcher Daemon..."
+cd ~/logchain && nohup python3 watcher_multiuser.py > ~/logchain/watcher_multiuser.log 2>&1 &
+sleep 2
+
+# Step 10 — Start Flask Auth App
+echo "Starting Flask Auth App..."
+cd ~/logchain && nohup python3 app_auth.py > ~/logchain/app_auth.log 2>&1 &
 sleep 3
 
 echo ""
 echo "======================================"
 echo "ALL SERVICES STARTED!"
-echo "Dashboard: http://$PC1_IP:5000"
-echo "Live view:  http://$PC1_IP:5000/entries"
+echo "Dashboard:  http://$PC1_IP:5000"
+echo "Login:      http://$PC1_IP:5000/login"
+echo "Admin:      admin / admin123"
 echo "======================================"
 echo ""
 echo "Useful commands:"
-echo "  tail -f ~/logchain/node1.log   # geth logs"
-echo "  tail -f ~/logchain/app.log     # flask logs"
-echo "  pgrep -f geth                  # check geth running"
-echo "  pgrep -f app.py                # check flask running"
+echo "  tail -f ~/logchain/node1.log              # geth logs"
+echo "  tail -f ~/logchain/app_auth.log           # flask auth logs"
+echo "  tail -f ~/logchain/watcher_multiuser.log  # watcher logs"
+echo "  pgrep -f geth                             # check geth running"
+echo "  pgrep -f app_auth.py                      # check flask running"
+echo "  pgrep -f watcher_multiuser.py             # check watcher running"

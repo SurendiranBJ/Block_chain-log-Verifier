@@ -1,0 +1,384 @@
+import os
+import json
+import hashlib
+from datetime import datetime
+from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, abort
+from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from web3 import Web3
+from models import Database
+from functools import wraps
+
+app = Flask(__name__)
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'default-dev-secret-key')
+
+# ── Database & Login ──────────────────────────────────────────────
+db = Database()
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
+
+class User(UserMixin):
+    def __init__(self, user_data):
+        self.id = str(user_data['_id'])
+        self.username = user_data['username']
+        self.role = user_data.get('role', 'user')
+        self._is_active = user_data.get('is_active', True)
+
+    @property
+    def is_active(self):
+        return self._is_active
+
+@login_manager.user_loader
+def load_user(user_id):
+    user_data = db.get_user_by_id(user_id)
+    if not user_data or not user_data.get('is_active', True):
+        return None
+    return User(user_data)
+
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated or current_user.role != 'admin':
+            abort(403)
+        return f(*args, **kwargs)
+    return decorated_function
+
+# ── Blockchain Setup ──────────────────────────────────────────────
+RPC_URL = "http://10.28.109.210:8545"
+NODE2_RPC_URL = "http://10.28.109.234:8546"
+CONTRACT_ADDRESS_V2 = "0x898ed5b8d8703459c5DcD4BF0fA5D01c934D0762"
+ABI_V2_PATH = "/home/sura/logchain/LogIntegrityV2_abi.json"
+
+w3 = Web3(Web3.HTTPProvider(RPC_URL))
+w3_node2 = Web3(Web3.HTTPProvider(NODE2_RPC_URL))
+contract_v2 = None
+if w3.is_connected() and os.path.exists(ABI_V2_PATH):
+    with open(ABI_V2_PATH) as f:
+        contract_v2 = w3.eth.contract(address=CONTRACT_ADDRESS_V2, abi=json.load(f))
+
+def sha256_line(line_str):
+    return hashlib.sha256(line_str.strip().encode("utf-8")).hexdigest()
+
+# ── Auth Routes ───────────────────────────────────────────────────
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if current_user.is_authenticated:
+        return redirect(url_for('dashboard'))
+    
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        user_data = db.get_user_by_username(username)
+        if user_data and db.verify_password(user_data['password'], password):
+            if not user_data.get('is_active', True):
+                flash('Account is disabled. Please contact admin.', 'danger')
+                return redirect(url_for('login'))
+                
+            user = User(user_data)
+            login_user(user)
+            db.update_login_time(user.id)
+            db.log_activity(user.id, "LOGIN", "User logged in successfully")
+            return redirect(url_for('dashboard'))
+            
+        flash('Invalid username or password', 'danger')
+    return render_template('login.html')
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        email = request.form.get('email', '')
+        
+        user_id, error = db.create_user(username, password, email)
+        if error:
+            flash(error, 'danger')
+        else:
+            db.log_activity(user_id, "REGISTER", f"New user registered: {username}")
+            flash('Registration successful! Please login.', 'success')
+            return redirect(url_for('login'))
+            
+    return render_template('register.html')
+
+@app.route('/logout')
+@login_required
+def logout():
+    db.log_activity(current_user.id, "LOGOUT", "User logged out")
+    logout_user()
+    return redirect(url_for('login'))
+
+# ── User Routes ───────────────────────────────────────────────────
+
+@app.route('/')
+@app.route('/dashboard')
+@login_required
+def dashboard():
+    logs = db.get_logs_for_user(current_user.id)
+    return render_template('dashboard.html', logs=logs)
+
+@app.route('/add_log', methods=['GET', 'POST'])
+@login_required
+def add_log():
+    if request.method == 'POST':
+        case_id = request.form.get('case_id')
+        log_path = request.form.get('log_path')
+        description = request.form.get('description', '')
+        
+        if not os.path.exists(log_path):
+            flash('Warning: File path does not currently exist', 'warning')
+            
+        log_id, _ = db.add_log_source(current_user.id, log_path, case_id, description)
+        db.log_activity(current_user.id, "ADD_LOG", f"Added log source for Case ID: {case_id}")
+        flash('Log source added successfully!', 'success')
+        return redirect(url_for('dashboard'))
+        
+    return render_template('add_log.html')
+
+@app.route('/toggle_log/<log_id>')
+@login_required
+def toggle_log(log_id):
+    new_status = db.toggle_log_status(log_id, current_user.id)
+    if new_status is not None:
+        db.log_activity(current_user.id, "TOGGLE_LOG", f"Log {log_id} status changed to {new_status}")
+    return redirect(url_for('dashboard'))
+
+@app.route('/delete_log/<log_id>')
+@login_required
+def delete_log(log_id):
+    if db.delete_log(log_id, current_user.id):
+        db.log_activity(current_user.id, "DELETE_LOG", f"Deleted log {log_id}")
+    return redirect(url_for('dashboard'))
+
+# ── Admin Routes ──────────────────────────────────────────────────
+
+@app.route('/admin')
+@admin_required
+def admin():
+    users = db.get_all_users()
+    all_logs = db.get_all_logs()
+    recent_activities = db.get_recent_activities(100)
+    return render_template('admin.html', users=users, logs=all_logs, activities=recent_activities)
+
+@app.route('/admin/toggle_user/<user_id>')
+@admin_required
+def toggle_user(user_id):
+    if user_id != current_user.id:  # Prevent locking oneself out
+        new_status = db.toggle_user_status(user_id)
+        db.log_activity(current_user.id, "ADMIN_TOGGLE_USER", f"User {user_id} active status: {new_status}")
+    return redirect(url_for('admin'))
+
+@app.route('/admin/delete_user/<user_id>')
+@admin_required
+def delete_user(user_id):
+    if user_id != current_user.id:
+        db.delete_user(user_id)
+        db.log_activity(current_user.id, "ADMIN_DELETE_USER", f"Deleted user {user_id}")
+    return redirect(url_for('admin'))
+
+@app.route('/admin/create_user', methods=['POST'])
+@admin_required
+def create_user():
+    username = request.form.get('username')
+    password = request.form.get('password')
+    role = request.form.get('role', 'user')
+    email = request.form.get('email', '')
+    
+    user_id, error = db.create_user(username, password, email, role=role)
+    if error:
+        flash(f'Error creating user: {error}', 'danger')
+    else:
+        db.log_activity(current_user.id, "ADMIN_CREATE_USER", f"Created {role} user: {username}")
+        flash(f'User {username} created successfully', 'success')
+    return redirect(url_for('admin'))
+
+# ── AJAX API Routes ──────────────────────────────────────────────
+
+@app.route('/api/blockchain_status')
+@admin_required
+def api_blockchain_status():
+    try:
+        node1_connected = w3.is_connected()
+        node1_block = w3.eth.block_number if node1_connected else 0
+        node1_peers = w3.net.peer_count if node1_connected else 0
+        node1_mining = getattr(w3.eth, 'mining', False) if node1_connected else False
+    except Exception:
+        node1_connected, node1_block, node1_peers, node1_mining = False, 0, 0, False
+
+    try:
+        node2_connected = w3_node2.is_connected()
+        node2_block = w3_node2.eth.block_number if node2_connected else 0
+    except Exception:
+        node2_connected, node2_block = False, 0
+
+    return jsonify({
+        "node1": {
+            "connected": node1_connected,
+            "block": node1_block,
+            "peers": node1_peers,
+            "mining": node1_mining,
+            "ip": RPC_URL
+        },
+        "node2": {
+            "connected": node2_connected,
+            "block": node2_block,
+            "ip": NODE2_RPC_URL
+        },
+        "active": node1_connected and node2_connected
+    })
+
+@app.route('/api/stats')
+@login_required
+def api_stats():
+    logs = db.get_logs_for_user(current_user.id)
+    total_logs = len(logs)
+    active_logs = sum(1 for log in logs if log.get('is_active'))
+    total_entries = sum(log.get('total_entries', 0) for log in logs)
+    verified_entries = sum(log.get('verified_entries', 0) for log in logs)
+    
+    return jsonify({
+        "total_logs": total_logs,
+        "active_logs": active_logs,
+        "total_entries": total_entries,
+        "verified_entries": verified_entries,
+        "log_sources": [{"id": str(log['_id']), "verified": log.get('verified_entries', 0), "total": log.get('total_entries', 0)} for log in logs]
+    })
+
+@app.route('/api/admin/user_cases/<user_id>')
+@login_required
+@admin_required
+def api_admin_user_cases(user_id):
+    logs = db.get_logs_for_user(user_id)
+    return jsonify([{"case_id": log.get("case_id"), "log_path": log.get("log_path"), 
+                     "verified_entries": log.get("verified_entries", 0), 
+                     "total_entries": log.get("total_entries", 0)} for log in logs])
+
+@app.route('/api/admin/tamper_logs/<case_id>')
+@login_required
+@admin_required
+def api_admin_tamper_logs(case_id):
+    activities = db.activities.find({
+        "case_id": case_id, 
+        "action": {"$in": ["TAMPER_DETECTED", "TAMPER_CORRECTED"]}
+    }).sort("timestamp", -1)
+    
+    rows = []
+    for act in activities:
+        rows.append({
+            "timestamp": act.get("timestamp").strftime('%Y-%m-%d %H:%M:%S'),
+            "action": act.get("action"),
+            "details": act.get("details")
+        })
+    return jsonify({"rows": rows})
+
+@app.route('/api/entries/<case_id>')
+@login_required
+def api_entries(case_id):
+    # Verify the current user owns a log with this case_id (or is admin)
+    user_logs = db.get_logs_for_user(current_user.id)
+    log_doc = next((l for l in user_logs if l.get('case_id') == case_id), None)
+    
+    if not log_doc and current_user.role != 'admin':
+        return jsonify({"error": "Unauthorized"}), 403
+        
+    log_path = log_doc['log_path'] if log_doc else None
+    
+    results = {
+        "status": "Scanning",
+        "all_ok": True,
+        "file_count": 0,
+        "chain_count": 0,
+        "rows": []
+    }
+    
+    if not contract_v2:
+        results["status"] = "V2 Contract Offline"
+        results["all_ok"] = False
+        return jsonify(results)
+        
+    try:
+        if log_path and os.path.exists(log_path):
+            with open(log_path, "r") as f:
+                file_lines = [line for line in f.readlines() if line.strip()]
+        else:
+            file_lines = []
+            
+        file_count = len(file_lines)
+        try:
+            chain_count = contract_v2.functions.getEntryCount(case_id).call()
+        except:
+            chain_count = 0
+            
+        results["file_count"] = file_count
+        results["chain_count"] = chain_count
+        max_idx = max(file_count, chain_count)
+        
+        all_ok = True
+        rows = []
+        
+        for i in range(max_idx):
+            has_file = i < file_count
+            has_chain = i < chain_count
+            
+            if has_file and has_chain:
+                fhash = sha256_line(file_lines[i])
+                chash = contract_v2.functions.getEntryHash(case_id, i).call()
+                if fhash == chash:
+                    rows.append({
+                        "index": i + 1, "status": "✅ OK",
+                        "content": file_lines[i].strip()[:55],
+                        "file_hash": fhash[:20] + "...",
+                        "chain_hash": chash[:20] + "...",
+                        "row_class": "", "tag_class": "tag-ok"
+                    })
+                elif not chash:
+                    all_ok = False
+                    rows.append({
+                        "index": i + 1, "status": "⚠️ MISSING",
+                        "content": file_lines[i].strip()[:55],
+                        "file_hash": fhash[:20] + "...",
+                        "chain_hash": "...",
+                        "row_class": "row-warning", "tag_class": "tag-warning"
+                    })
+                else:
+                    all_ok = False
+                    rows.append({
+                        "index": i + 1, "status": "🚨 TAMPERED",
+                        "content": file_lines[i].strip()[:55],
+                        "file_hash": fhash[:20] + "...",
+                        "chain_hash": chash[:20] + "...",
+                        "row_class": "row-tampered", "tag_class": "tag-tampered"
+                    })
+            elif has_file and not has_chain:
+                all_ok = False
+                fhash = sha256_line(file_lines[i])
+                rows.append({
+                    "index": i + 1, "status": "⏳ PENDING",
+                    "content": file_lines[i].strip()[:55],
+                    "file_hash": fhash[:20] + "...", "chain_hash": "...",
+                    "row_class": "row-pending", "tag_class": "tag-pending"
+                })
+            elif has_chain and not has_file:
+                all_ok = False
+                chash = contract_v2.functions.getEntryHash(case_id, i).call()
+                rows.append({
+                    "index": i + 1, "status": "❌ DELETED",
+                    "content": "(missing from file)",
+                    "file_hash": "(none)",
+                    "chain_hash": chash[:20] + "...",
+                    "row_class": "row-deleted", "tag_class": "tag-deleted"
+                })
+                
+        results["all_ok"] = all_ok
+        results["rows"] = rows
+        results["status"] = "All Verified" if all_ok else "Integrity Issues"
+        
+    except Exception as e:
+        results["status"] = f"Error: {str(e)}"
+        results["all_ok"] = False
+        
+    return jsonify(results)
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=True)

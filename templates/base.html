@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LogChain // Blockchain Log Verifier</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #060b18;
+            --bg-secondary: #0d1325;
+            --bg-card: #111a33;
+            --border-color: #1a2744;
+            --border-glow: #00e5ff33;
+            --accent-cyan: #00e5ff;
+            --accent-purple: #7c3aed;
+            --accent-green: #22c55e;
+            --accent-red: #ef4444;
+            --accent-amber: #f59e0b;
+            --text-primary: #e8edf5;
+            --text-secondary: #8492a6;
+            --text-dim: #4a5568;
+            --gradient-main: linear-gradient(135deg, #00e5ff 0%, #7c3aed 100%);
+        }
+
+        *, *::before, *::after { box-sizing: border-box; }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: 'Inter', sans-serif;
+            min-height: 100vh;
+        }
+
+        /* Subtle animated background grid */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(0, 229, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 229, 255, 0.03) 1px, transparent 1px);
+            background-size: 60px 60px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .navbar {
+            background: rgba(13, 19, 37, 0.85) !important;
+            backdrop-filter: blur(16px);
+            border-bottom: 1px solid var(--border-color);
+            padding: 0.75rem 0;
+            z-index: 100;
+        }
+
+        .navbar-brand {
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 700;
+            font-size: 1.1rem;
+            letter-spacing: 2px;
+            background: var(--gradient-main);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .navbar-brand::before {
+            content: '⛓ ';
+            -webkit-text-fill-color: var(--accent-cyan);
+        }
+
+        .nav-link {
+            color: var(--text-secondary) !important;
+            font-weight: 500;
+            font-size: 0.9rem;
+            padding: 0.5rem 1rem !important;
+            border-radius: 8px;
+            transition: all 0.25s ease;
+        }
+
+        .nav-link:hover {
+            color: var(--accent-cyan) !important;
+            background: rgba(0, 229, 255, 0.08);
+        }
+
+        .nav-link.text-warning {
+            color: var(--accent-amber) !important;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+        }
+
+        .card-header {
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .table-dark {
+            --bs-table-bg: var(--bg-card);
+            --bs-table-border-color: var(--border-color);
+            --bs-table-hover-bg: rgba(0, 229, 255, 0.05);
+        }
+
+        .table-dark th {
+            background: var(--bg-secondary);
+            color: var(--accent-cyan);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .offcanvas, .modal-content {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+        }
+
+        code {
+            color: var(--accent-green);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .badge.bg-success { background: var(--accent-green) !important; }
+        .badge.bg-danger { background: var(--accent-red) !important; }
+        .badge.bg-warning { background: var(--accent-amber) !important; color: #000 !important; }
+        .badge.bg-info { background: var(--accent-cyan) !important; color: #000 !important; }
+        .badge.bg-secondary { background: var(--text-dim) !important; }
+
+        .btn-info {
+            background: var(--gradient-main);
+            border: none;
+            color: #fff;
+            font-weight: 600;
+        }
+        .btn-info:hover {
+            filter: brightness(1.15);
+            color: #fff;
+        }
+
+        .btn-outline-info {
+            border-color: var(--accent-cyan);
+            color: var(--accent-cyan);
+        }
+        .btn-outline-info:hover {
+            background: var(--accent-cyan);
+            color: #000;
+        }
+
+        .btn-outline-warning {
+            border-color: var(--accent-amber);
+            color: var(--accent-amber);
+        }
+        .btn-outline-warning:hover {
+            background: var(--accent-amber);
+            color: #000;
+        }
+
+        .btn-outline-danger {
+            border-color: var(--accent-red);
+            color: var(--accent-red);
+        }
+
+        .form-control, .form-select {
+            background: var(--bg-primary) !important;
+            border: 1px solid var(--border-color) !important;
+            color: var(--text-primary) !important;
+            border-radius: 10px;
+            padding: 0.65rem 0.9rem;
+            transition: border-color 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .form-control:focus, .form-select:focus {
+            border-color: var(--accent-cyan) !important;
+            box-shadow: 0 0 0 3px rgba(0, 229, 255, 0.15) !important;
+        }
+
+        .form-label {
+            color: var(--text-secondary);
+            font-weight: 500;
+            font-size: 0.85rem;
+        }
+
+        .form-text {
+            color: var(--text-dim) !important;
+        }
+
+        .row-tampered { background-color: rgba(239, 68, 68, 0.12) !important; border-left: 4px solid var(--accent-red); }
+        .row-pending  { background-color: rgba(124, 58, 237, 0.1) !important; border-left: 4px solid var(--accent-purple); }
+        .row-deleted  { background-color: rgba(239, 68, 68, 0.06) !important; border-left: 4px solid #991b1b; }
+
+        .alert {
+            border-radius: 12px;
+            border: none;
+        }
+
+        .alert-success { background: rgba(34, 197, 94, 0.15); color: var(--accent-green); border-left: 4px solid var(--accent-green); }
+        .alert-danger  { background: rgba(239, 68, 68, 0.15); color: var(--accent-red); border-left: 4px solid var(--accent-red); }
+        .alert-warning { background: rgba(245, 158, 11, 0.15); color: var(--accent-amber); border-left: 4px solid var(--accent-amber); }
+
+        .container {
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: var(--bg-primary); }
+        ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--accent-cyan); }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark mb-4">
+        <div class="container">
+            <a class="navbar-brand" href="/">LOGCHAIN</a>
+            <button class="navbar-toggler border-secondary" data-bs-toggle="collapse" data-bs-target="#navbar">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbar">
+                <ul class="navbar-nav ms-auto">
+                    {% if current_user.is_authenticated %}
+                        <li class="nav-item"><a class="nav-link" href="{{ url_for('dashboard') }}">📊 Dashboard</a></li>
+                        {% if current_user.role == 'admin' %}
+                        <li class="nav-item"><a class="nav-link text-warning" href="{{ url_for('admin') }}">⚙️ Admin</a></li>
+                        {% endif %}
+                        <li class="nav-item"><a class="nav-link" href="{{ url_for('logout') }}">🔓 Logout ({{ current_user.username }})</a></li>
+                    {% else %}
+                        <li class="nav-item"><a class="nav-link" href="{{ url_for('login') }}">Login</a></li>
+                        <li class="nav-item"><a class="nav-link" href="{{ url_for('register') }}">Register</a></li>
+                    {% endif %}
+                </ul>
+            </div>
+        </div>
+    </nav>
+    <div class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        {% block content %}{% endblock %}
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

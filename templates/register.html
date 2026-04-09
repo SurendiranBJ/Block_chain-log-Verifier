@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row justify-content-center align-items-center" style="min-height: 75vh;">
+    <div class="col-md-5 col-lg-4">
+        <div class="text-center mb-4">
+            <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">📝</div>
+            <h3 style="font-family: 'JetBrains Mono', monospace; font-weight: 600; color: var(--accent-cyan); letter-spacing: 2px;">CREATE ACCOUNT</h3>
+        </div>
+
+        <div class="card" style="overflow: hidden;">
+            <div style="height: 3px; background: linear-gradient(90deg, #7c3aed, #00e5ff, #7c3aed); background-size: 200% 100%; animation: shimmer 3s ease-in-out infinite;"></div>
+
+            <div class="card-body p-4">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label class="form-label">Username</label>
+                        <input type="text" name="username" class="form-control" placeholder="Choose a username" required autofocus>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Email <span style="color: var(--text-dim);">(Optional)</span></label>
+                        <input type="email" name="email" class="form-control" placeholder="you@example.com">
+                    </div>
+                    <div class="mb-4">
+                        <label class="form-label">Password</label>
+                        <input type="password" name="password" class="form-control" placeholder="Choose a strong password" required>
+                    </div>
+                    <button type="submit" class="btn w-100 mb-3 fw-bold py-2" style="background: linear-gradient(135deg, #7c3aed 0%, #00e5ff 100%); color: #fff; border: none; border-radius: 10px; font-size: 0.95rem; letter-spacing: 1px; transition: all 0.3s ease;">
+                        ✨ Create Account
+                    </button>
+                    <div class="text-center">
+                        <small style="color: var(--text-dim);">Already have an account? <a href="{{ url_for('login') }}" style="color: var(--accent-cyan); text-decoration: none;">Login here</a></small>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    @keyframes shimmer {
+        0% { background-position: -200% 0; }
+        100% { background-position: 200% 0; }
+    }
+
+    .card:hover {
+        border-color: rgba(124, 58, 237, 0.3);
+        box-shadow: 0 8px 40px rgba(124, 58, 237, 0.08), 0 0 0 1px rgba(124, 58, 237, 0.1);
+    }
+
+    .btn:hover {
+        filter: brightness(1.2);
+        box-shadow: 0 4px 20px rgba(124, 58, 237, 0.3);
+        transform: translateY(-1px);
+    }
+</style>
+{% endblock %}
