@@ -44,8 +44,8 @@ def admin_required(f):
     return decorated_function
 
 # ── Blockchain Setup ──────────────────────────────────────────────
-RPC_URL = "http://10.28.109.210:8545"
-NODE2_RPC_URL = "http://10.28.109.234:8546"
+RPC_URL = "http://10.117.95.210:8545"
+NODE2_RPC_URL = "http://10.117.95.234:8546"
 CONTRACT_ADDRESS_V2 = "0x898ed5b8d8703459c5DcD4BF0fA5D01c934D0762"
 ABI_V2_PATH = "/home/sura/logchain/LogIntegrityV2_abi.json"
 

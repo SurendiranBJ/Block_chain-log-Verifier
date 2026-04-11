@@ -6,7 +6,7 @@ import json
 import sys
 from web3 import Web3
 
-RPC_URL     = "http://10.28.109.210:8545"
+RPC_URL     = "http://10.117.95.210:8545"
 PRIVATE_KEY = "0x9c7bf0754e9b13d38d2b71a69da799f76545991b97918ae1e000f400437d51b2"
 ACCOUNT     = "0x8b629ce3BB085B061D95C7f0d14d2BF63ECbA758"
 CHAIN_ID    = 12345

@@ -18,7 +18,7 @@ app = Flask(__name__)
 
 # ── Config ────────────────────────────────────────────────────────
 CONFIG_PATH         = "/home/sura/logchain/config.json"
-RPC_URL             = "http://10.28.109.210:8545"
+RPC_URL             = "http://10.117.95.210:8545"
 CONTRACT_ADDRESS_V1 = "0xE89d89d78b1a2BBA11Cb36C0750c28cBbd118862"
 
 # ── Start LogMonitor Daemon ───────────────────────────────────────
@@ -116,10 +116,10 @@ HTML_ENTRIES = """
     </div>
 
     <div class="card">
-        <label>Node 1 (10.28.109.210):</label> 
+        <label>Node 1 (10.117.95.210):</label> 
         Conn: <span id="nodeConnected">False</span> | Block: <span id="blockNumber">0</span>
         <br><br>
-        <label>Node 2 (10.28.109.234):</label> 
+        <label>Node 2 (10.117.95.234):</label> 
         Conn: <span id="node2Connected" style="color:#aaa">False</span> | Block: <span id="node2BlockNumber" style="color:#aaa">0</span>
     </div>
     <p style="color:#555">⚡ Fetching updates from Background Daemon via AJAX...</p>
