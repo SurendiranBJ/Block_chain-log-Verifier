@@ -1,15 +1,69 @@
-node_modules
-.env
+# ============================================================
+# LogChain .gitignore
+# ============================================================
 
-# Hardhat files
+# --- Secrets ---
+.env
+*.key
+*.pem
+*.p12
+password.txt
+jwtsecret
+jwt.secret
+
+# --- Blockchain Data ---
+keystore/
+node1/
+node2/
+node1_data/
+node2_data/
+geth/
+chaindata/
+*.ipc
+
+# --- Logs ---
+*.log
+logs/
+
+# --- Generated/Runtime State ---
+offset_tracker.json
+deployment.json
+demo/sample_logs/*.json
+demo/sample_logs/*.log
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# --- Node.js ---
+node_modules/
 /cache
 /artifacts
-
-# TypeChain files
 /typechain
 /typechain-types
-
-# solidity-coverage files
 /coverage
 /coverage.json
-*.deb
+
+# --- IDE ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- Temporary ---
+*.tmp
+*.bak
+scratch/

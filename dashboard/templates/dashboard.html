@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LogChain — Zero-Trust Log Integrity Dashboard</title>
+    <meta name="description" content="Zero-Trust Cross-Cloud Log Integrity & Tamper Detection System powered by blockchain cryptographic commitments.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary:   #080c12;
+            --bg-secondary: #0d1420;
+            --bg-card:      #101828;
+            --bg-card-2:    #131e2e;
+            --border:       rgba(255,255,255,0.06);
+            --border-glow:  rgba(0,224,150,0.25);
+            --green:        #00e096;
+            --green-dim:    #00e09620;
+            --red:          #ff4757;
+            --red-dim:      #ff475720;
+            --orange:       #ffa502;
+            --orange-dim:   #ffa50220;
+            --blue:         #2196f3;
+            --blue-dim:     #2196f320;
+            --purple:       #a855f7;
+            --text-primary: #f0f4f8;
+            --text-muted:   #64748b;
+            --text-dim:     #94a3b8;
+            --mono:         'JetBrains Mono', monospace;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* ── Background Grid ── */
+        body::before {
+            content: '';
+            position: fixed; inset: 0;
+            background-image:
+                linear-gradient(rgba(0,224,150,0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0,224,150,0.03) 1px, transparent 1px);
+            background-size: 40px 40px;
+            pointer-events: none;
+        }
+
+        /* ── Header ── */
+        header {
+            padding: 20px 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--border);
+            background: rgba(8,12,18,0.9);
+            backdrop-filter: blur(12px);
+            position: sticky; top: 0; z-index: 100;
+        }
+        .logo {
+            display: flex; align-items: center; gap: 12px;
+        }
+        .logo-icon {
+            width: 36px; height: 36px;
+            background: linear-gradient(135deg, var(--green), #00b4d8);
+            border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 18px;
+        }
+        .logo-text { font-size: 20px; font-weight: 700; letter-spacing: -0.5px; }
+        .logo-sub  { font-size: 11px; color: var(--text-muted); letter-spacing: 1px; text-transform: uppercase; }
+
+        .header-badge {
+            display: flex; align-items: center; gap: 8px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            font-size: 13px; font-weight: 500;
+        }
+        .pulse {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--green);
+            box-shadow: 0 0 0 0 rgba(0,224,150,0.4);
+            animation: pulse 2s infinite;
+        }
+        .pulse.red { background: var(--red); box-shadow: 0 0 0 0 rgba(255,71,87,0.4); }
+        @keyframes pulse {
+            0%   { box-shadow: 0 0 0 0 rgba(0,224,150,0.4); }
+            70%  { box-shadow: 0 0 0 8px rgba(0,224,150,0); }
+            100% { box-shadow: 0 0 0 0 rgba(0,224,150,0); }
+        }
+
+        /* ── Main Layout ── */
+        main { padding: 32px; max-width: 1600px; margin: 0 auto; }
+
+        /* ── Integrity Banner ── */
+        #integrity-banner {
+            border-radius: 16px;
+            padding: 28px 32px;
+            margin-bottom: 28px;
+            display: flex; align-items: center; justify-content: space-between;
+            transition: all 0.5s ease;
+            position: relative; overflow: hidden;
+        }
+        #integrity-banner.green {
+            background: linear-gradient(135deg, rgba(0,224,150,0.12), rgba(0,180,216,0.08));
+            border: 1px solid rgba(0,224,150,0.3);
+        }
+        #integrity-banner.red {
+            background: linear-gradient(135deg, rgba(255,71,87,0.15), rgba(255,71,87,0.05));
+            border: 1px solid rgba(255,71,87,0.4);
+            animation: redPulse 2s infinite;
+        }
+        @keyframes redPulse {
+            0%,100% { box-shadow: 0 0 0 0 rgba(255,71,87,0); }
+            50%      { box-shadow: 0 0 20px rgba(255,71,87,0.2); }
+        }
+        #integrity-banner::before {
+            content: ''; position: absolute; top: -50%; right: -10%;
+            width: 300px; height: 300px;
+            border-radius: 50%;
+            opacity: 0.05;
+        }
+        #integrity-banner.green::before { background: var(--green); }
+        #integrity-banner.red::before   { background: var(--red); }
+
+        .banner-status {
+            font-size: 42px; font-weight: 800; letter-spacing: -2px;
+            line-height: 1;
+        }
+        .banner-status.green { color: var(--green); }
+        .banner-status.red   { color: var(--red); }
+        .banner-label { font-size: 13px; color: var(--text-muted); margin-top: 6px; letter-spacing: 1px; text-transform: uppercase; }
+        .banner-case  { text-align: right; }
+        .banner-case-id { font-family: var(--mono); font-size: 20px; font-weight: 600; color: var(--green); }
+        .banner-case-label { font-size: 12px; color: var(--text-muted); letter-spacing: 1px; text-transform: uppercase; }
+
+        /* ── Grid ── */
+        .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; }
+        .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 20px; }
+        .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 20px; }
+        @media (max-width: 1200px) { .grid-4 { grid-template-columns: repeat(2,1fr); } }
+        @media (max-width: 768px)  { .grid-4, .grid-3, .grid-2 { grid-template-columns: 1fr; } }
+
+        /* ── Cards ── */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px 24px;
+            transition: border-color 0.3s;
+        }
+        .card:hover { border-color: rgba(255,255,255,0.1); }
+        .card-label {
+            font-size: 11px; color: var(--text-muted);
+            letter-spacing: 1px; text-transform: uppercase; margin-bottom: 8px;
+        }
+        .card-value {
+            font-size: 28px; font-weight: 700; line-height: 1;
+        }
+        .card-sub { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+
+        .stat-green  { color: var(--green); }
+        .stat-red    { color: var(--red); }
+        .stat-orange { color: var(--orange); }
+        .stat-blue   { color: var(--blue); }
+        .stat-purple { color: var(--purple); }
+        .stat-white  { color: var(--text-primary); }
+
+        /* ── Node Cards ── */
+        .node-card {
+            background: var(--bg-card-2);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px 24px;
+        }
+        .node-header {
+            display: flex; align-items: center; gap: 10px; margin-bottom: 16px;
+        }
+        .node-name { font-size: 15px; font-weight: 600; }
+        .node-row  { display: flex; justify-content: space-between; align-items: center; margin: 8px 0; }
+        .node-key  { font-size: 12px; color: var(--text-muted); }
+        .node-val  { font-size: 13px; font-weight: 500; font-family: var(--mono); }
+        .badge {
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600;
+        }
+        .badge-green  { background: var(--green-dim);  color: var(--green); }
+        .badge-red    { background: var(--red-dim);    color: var(--red); }
+        .badge-orange { background: var(--orange-dim); color: var(--orange); }
+
+        /* ── Section Header ── */
+        .section-header {
+            display: flex; align-items: center; justify-content: space-between;
+            margin: 24px 0 16px;
+        }
+        .section-title { font-size: 16px; font-weight: 600; }
+        .section-count {
+            font-size: 12px; color: var(--text-muted);
+            background: var(--bg-card); padding: 4px 12px;
+            border-radius: 20px; border: 1px solid var(--border);
+        }
+
+        /* ── Alerts Table ── */
+        .alerts-container {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+            margin-bottom: 24px;
+        }
+        .alerts-table { width: 100%; border-collapse: collapse; }
+        .alerts-table th {
+            padding: 12px 16px; text-align: left;
+            font-size: 11px; color: var(--text-muted);
+            letter-spacing: 1px; text-transform: uppercase;
+            border-bottom: 1px solid var(--border);
+            background: var(--bg-card-2);
+        }
+        .alerts-table td {
+            padding: 12px 16px;
+            font-size: 13px;
+            border-bottom: 1px solid var(--border);
+            vertical-align: middle;
+        }
+        .alerts-table tr:last-child td { border-bottom: none; }
+        .alerts-table tr:hover td { background: rgba(255,255,255,0.02); }
+
+        .alert-type-tag {
+            display: inline-block;
+            padding: 3px 10px; border-radius: 6px;
+            font-size: 11px; font-weight: 700; letter-spacing: 0.5px;
+        }
+        .tag-modified    { background: rgba(255,71,87,0.2);  color: var(--red); }
+        .tag-deleted     { background: rgba(255,165,2,0.2);  color: var(--orange); }
+        .tag-unexpected  { background: rgba(168,85,247,0.2); color: var(--purple); }
+        .tag-reordered   { background: rgba(33,150,243,0.2); color: var(--blue); }
+
+        .mono-sm { font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
+        .no-alerts {
+            text-align: center; padding: 48px;
+            color: var(--text-muted); font-size: 14px;
+        }
+        .no-alerts-icon { font-size: 36px; display: block; margin-bottom: 12px; }
+
+        /* ── Contract Info ── */
+        .contract-info {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px 24px;
+        }
+        .contract-row {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 10px 0; border-bottom: 1px solid var(--border);
+        }
+        .contract-row:last-child { border-bottom: none; }
+        .contract-key   { font-size: 12px; color: var(--text-muted); }
+        .contract-value { font-family: var(--mono); font-size: 12px; color: var(--text-dim); word-break: break-all; max-width: 60%; text-align: right; }
+
+        /* ── Buttons ── */
+        .btn {
+            padding: 8px 18px; border-radius: 8px; font-size: 13px;
+            font-weight: 600; cursor: pointer; border: none;
+            transition: all 0.2s; display: inline-flex; align-items: center; gap: 8px;
+        }
+        .btn-green  { background: var(--green);  color: #000; }
+        .btn-green:hover  { background: #00c97c; transform: translateY(-1px); }
+        .btn-red    { background: var(--red);    color: #fff; }
+        .btn-red:hover    { background: #e8303d; transform: translateY(-1px); }
+        .btn-ghost  { background: var(--bg-card-2); color: var(--text-dim); border: 1px solid var(--border); }
+        .btn-ghost:hover  { border-color: rgba(255,255,255,0.15); color: var(--text-primary); }
+        .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none !important; }
+
+        .actions-row {
+            display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 24px;
+        }
+
+        /* ── Toast ── */
+        #toast {
+            position: fixed; bottom: 24px; right: 24px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 14px 20px;
+            font-size: 13px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+            transform: translateY(100px); opacity: 0;
+            transition: all 0.3s;
+            z-index: 999;
+            max-width: 350px;
+        }
+        #toast.show { transform: translateY(0); opacity: 1; }
+        #toast.green-toast { border-color: rgba(0,224,150,0.4); }
+        #toast.red-toast   { border-color: rgba(255,71,87,0.4); }
+
+        /* ── Loading Spinner ── */
+        .spinner {
+            display: inline-block; width: 14px; height: 14px;
+            border: 2px solid rgba(255,255,255,0.2);
+            border-top-color: var(--green);
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── Footer ── */
+        footer {
+            text-align: center; padding: 24px;
+            border-top: 1px solid var(--border);
+            font-size: 12px; color: var(--text-muted);
+            margin-top: 32px;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="logo">
+        <div class="logo-icon">🔒</div>
+        <div>
+            <div class="logo-text">LogChain</div>
+            <div class="logo-sub">Zero-Trust Log Integrity</div>
+        </div>
+    </div>
+    <div class="header-badge">
+        <div class="pulse" id="pulse-dot"></div>
+        <span id="header-status-text">Connecting…</span>
+    </div>
+</header>
+
+<main>
+    <!-- Integrity Banner -->
+    <div id="integrity-banner" class="green">
+        <div>
+            <div class="banner-status green" id="banner-state">CHECKING…</div>
+            <div class="banner-label">Cryptographic Integrity Status</div>
+        </div>
+        <div class="banner-case">
+            <div class="banner-case-id" id="banner-case-id">—</div>
+            <div class="banner-case-label">Active Case</div>
+        </div>
+    </div>
+
+    <!-- Stats Row -->
+    <div class="grid-4">
+        <div class="card">
+            <div class="card-label">Total Events</div>
+            <div class="card-value stat-white" id="stat-total">—</div>
+            <div class="card-sub">in committed batches</div>
+        </div>
+        <div class="card">
+            <div class="card-label">Verified</div>
+            <div class="card-value stat-green" id="stat-verified">—</div>
+            <div class="card-sub">hash matches blockchain</div>
+        </div>
+        <div class="card">
+            <div class="card-label">Violations</div>
+            <div class="card-value stat-red" id="stat-violations">—</div>
+            <div class="card-sub">MODIFIED + DELETED + other</div>
+        </div>
+        <div class="card">
+            <div class="card-label">Latest Block</div>
+            <div class="card-value stat-blue" id="stat-block">—</div>
+            <div class="card-sub">Device 1 chain head</div>
+        </div>
+    </div>
+
+    <!-- Node Status -->
+    <div class="grid-3">
+        <div class="node-card" id="node1-card">
+            <div class="node-header">
+                <div class="pulse" id="node1-pulse"></div>
+                <div class="node-name">Device 1 — Primary Node</div>
+            </div>
+            <div class="node-row">
+                <span class="node-key">Status</span>
+                <span class="badge badge-red" id="node1-status">OFFLINE</span>
+            </div>
+            <div class="node-row">
+                <span class="node-key">Block</span>
+                <span class="node-val" id="node1-block">—</span>
+            </div>
+            <div class="node-row">
+                <span class="node-key">Chain ID</span>
+                <span class="node-val" id="node1-chain">—</span>
+            </div>
+            <div class="node-row">
+                <span class="node-key">Peers</span>
+                <span class="node-val" id="node1-peers">—</span>
+            </div>
+        </div>
+
+        <div class="node-card" id="node2-card">
+            <div class="node-header">
+                <div class="pulse" id="node2-pulse"></div>
+                <div class="node-name">Device 2 — Independent Validator</div>
+            </div>
+            <div class="node-row">
+                <span class="node-key">Status</span>
+                <span class="badge badge-red" id="node2-status">OFFLINE</span>
+            </div>
+            <div class="node-row">
+                <span class="node-key">Block</span>
+                <span class="node-val" id="node2-block">—</span>
+            </div>
+            <div class="node-row">
+                <span class="node-key">Chain ID</span>
+                <span class="node-val" id="node2-chain">—</span>
+            </div>
+            <div class="node-row">
+                <span class="node-key">Role</span>
+                <span class="node-val">Replica / Validator</span>
+            </div>
+        </div>
+
+        <div class="contract-info">
+            <div class="card-label" style="margin-bottom:16px;">Contract Info</div>
+            <div class="contract-row">
+                <span class="contract-key">Contract Version</span>
+                <span class="contract-value">LogIntegrityV3</span>
+            </div>
+            <div class="contract-row">
+                <span class="contract-key">Address</span>
+                <span class="contract-value mono-sm" id="contract-addr">Not deployed</span>
+            </div>
+            <div class="contract-row">
+                <span class="contract-key">MongoDB</span>
+                <span class="node-val" id="mongo-status">—</span>
+            </div>
+            <div class="contract-row">
+                <span class="contract-key">Last Updated</span>
+                <span class="contract-value" id="last-updated">—</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="actions-row">
+        <button class="btn btn-green" id="btn-ingest" onclick="runIngest()">
+            ⚡ Ingest &amp; Anchor
+        </button>
+        <button class="btn btn-ghost" id="btn-verify" onclick="runVerify()">
+            🔍 Verify Integrity
+        </button>
+        <button class="btn btn-ghost" id="btn-refresh" onclick="fetchStatus()">
+            🔄 Refresh
+        </button>
+        <button class="btn btn-red" id="btn-reset" onclick="resetDemo()">
+            🔄 Reset Demo
+        </button>
+    </div>
+
+    <!-- Alert Table -->
+    <div class="section-header">
+        <div class="section-title">🚨 Integrity Alerts</div>
+        <div class="section-count" id="alert-count">0 alerts</div>
+    </div>
+    <div class="alerts-container">
+        <table class="alerts-table" id="alerts-table">
+            <thead>
+                <tr>
+                    <th>Type</th>
+                    <th>Event ID</th>
+                    <th>Sequence</th>
+                    <th>Expected Hash</th>
+                    <th>Actual Hash</th>
+                    <th>Batch</th>
+                    <th>Time</th>
+                </tr>
+            </thead>
+            <tbody id="alerts-body">
+                <tr>
+                    <td colspan="7">
+                        <div class="no-alerts">
+                            <span class="no-alerts-icon">✅</span>
+                            No integrity violations detected
+                        </div>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</main>
+
+<div id="toast"></div>
+
+<footer>
+    LogChain — Zero-Trust Cross-Cloud Log Integrity &amp; Tamper Detection System &nbsp;|&nbsp;
+    <strong>"We store cryptographic commitments on an independent ledger while the raw logs remain in the cloud."</strong>
+</footer>
+
+<script>
+    let alertStats = {};
+
+    function showToast(msg, type='green') {
+        const t = document.getElementById('toast');
+        t.textContent = msg;
+        t.className = `show ${type}-toast`;
+        setTimeout(() => t.className = '', 3000);
+    }
+
+    async function fetchStatus() {
+        try {
+            const res = await fetch('/api/status');
+            if (!res.ok) throw new Error('API error');
+            const d = await res.json();
+
+            alertStats = d.alert_stats || {};
+            const integrity = d.integrity || 'GREEN';
+
+            // Banner
+            const banner = document.getElementById('integrity-banner');
+            const bannerState = document.getElementById('banner-state');
+            const bannerState2 = bannerState;
+            banner.className = integrity === 'GREEN' ? 'green' : 'red';
+            bannerState.textContent  = integrity === 'GREEN' ? '✅ ALL VERIFIED' : '🚨 INTEGRITY VIOLATION';
+            bannerState.className    = `banner-status ${integrity === 'GREEN' ? 'green' : 'red'}`;
+            document.getElementById('banner-case-id').textContent = d.case_id || '—';
+
+            // Header pulse
+            const pd = document.getElementById('pulse-dot');
+            pd.className = integrity === 'GREEN' ? 'pulse' : 'pulse red';
+            document.getElementById('header-status-text').textContent =
+                integrity === 'GREEN' ? 'All Systems Nominal' : 'INTEGRITY VIOLATION';
+
+            // Stats
+            const totalAlerts = (alertStats.total_alerts || 0);
+            document.getElementById('stat-violations').textContent = totalAlerts;
+            document.getElementById('stat-block').textContent =
+                (d.blockchain?.device1?.block ?? '—').toString();
+
+            // Node 1
+            const n1 = d.blockchain?.device1 || {};
+            const n1ok = n1.connected;
+            document.getElementById('node1-status').textContent = n1ok ? 'ONLINE' : 'OFFLINE';
+            document.getElementById('node1-status').className   = `badge ${n1ok ? 'badge-green' : 'badge-red'}`;
+            document.getElementById('node1-block').textContent  = n1ok ? n1.block : '—';
+            document.getElementById('node1-chain').textContent  = n1ok ? n1.chain_id : '—';
+            document.getElementById('node1-peers').textContent  = n1ok ? (n1.peer_count ?? '—') : '—';
+            document.getElementById('node1-pulse').className    = `pulse ${n1ok ? '' : 'red'}`;
+
+            // Node 2
+            const n2 = d.blockchain?.device2 || {};
+            const n2ok = n2.connected;
+            document.getElementById('node2-status').textContent = n2ok ? 'ONLINE' : 'OFFLINE';
+            document.getElementById('node2-status').className   = `badge ${n2ok ? 'badge-green' : 'badge-red'}`;
+            document.getElementById('node2-block').textContent  = n2ok ? n2.block : '—';
+            document.getElementById('node2-chain').textContent  = n2ok ? n2.chain_id : '—';
+            document.getElementById('node2-pulse').className    = `pulse ${n2ok ? '' : 'red'}`;
+
+            // Contract
+            document.getElementById('contract-addr').textContent =
+                d.contract && d.contract !== 'Not deployed'
+                    ? d.contract.slice(0,10) + '...' + d.contract.slice(-8)
+                    : 'Not deployed';
+            document.getElementById('mongo-status').textContent =
+                d.mongodb?.available ? '🟢 Connected' : '🔴 Offline';
+            document.getElementById('last-updated').textContent =
+                new Date(d.timestamp).toLocaleTimeString();
+
+        } catch(e) {
+            document.getElementById('header-status-text').textContent = 'Connection Error';
+        }
+    }
+
+    async function fetchAlerts() {
+        try {
+            const res = await fetch('/api/alerts?limit=50');
+            const d = await res.json();
+            const alerts = d.alerts || [];
+            const tbody = document.getElementById('alerts-body');
+            document.getElementById('alert-count').textContent = `${alerts.length} alert${alerts.length!==1?'s':''}`;
+
+            // Update verified/total stats
+            if (alerts.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7"><div class="no-alerts"><span class="no-alerts-icon">✅</span>No integrity violations detected</div></td></tr>`;
+                document.getElementById('stat-total').textContent = '—';
+                document.getElementById('stat-verified').textContent = '—';
+            } else {
+                const rows = alerts.map(a => {
+                    const typeClass = {
+                        MODIFIED: 'tag-modified', DELETED: 'tag-deleted',
+                        UNEXPECTED: 'tag-unexpected', REORDERED: 'tag-reordered',
+                    }[a.alert_type] || 'tag-modified';
+                    const exp = a.expected_hash ? a.expected_hash.slice(0,12)+'...' : 'none';
+                    const act = a.actual_hash   ? a.actual_hash.slice(0,12)+'...'   : 'none';
+                    const ts  = new Date(a.timestamp).toLocaleTimeString();
+                    // Escape values (server already does this but belt-and-suspenders)
+                    const eid = escHtml(a.event_id || '');
+                    const bid = escHtml(a.batch_id || '');
+                    return `<tr>
+                        <td><span class="alert-type-tag ${typeClass}">${escHtml(a.alert_type)}</span></td>
+                        <td class="mono-sm">${eid}</td>
+                        <td>${a.sequence ?? '—'}</td>
+                        <td class="mono-sm">${escHtml(exp)}</td>
+                        <td class="mono-sm">${escHtml(act)}</td>
+                        <td class="mono-sm">${bid}</td>
+                        <td style="color:var(--text-muted)">${ts}</td>
+                    </tr>`;
+                }).join('');
+                tbody.innerHTML = rows;
+            }
+        } catch(e) { console.error('fetchAlerts:', e); }
+    }
+
+    function escHtml(str) {
+        return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    async function runIngest() {
+        const btn = document.getElementById('btn-ingest');
+        btn.disabled = true;
+        btn.innerHTML = '<div class="spinner"></div> Ingesting…';
+        try {
+            // Load local events and ingest
+            const res = await fetch('/api/ingest', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({case_id: null, events: []}),
+            });
+            const d = await res.json();
+            if (d.success) {
+                showToast(`✅ Batch anchored: ${d.batch_id}`, 'green');
+            } else {
+                showToast(`⚠️ ${d.error}`, 'red');
+            }
+        } catch(e) {
+            showToast('❌ Ingestion failed: ' + e.message, 'red');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '⚡ Ingest &amp; Anchor';
+            fetchStatus(); fetchAlerts();
+        }
+    }
+
+    async function runVerify() {
+        const btn = document.getElementById('btn-verify');
+        btn.disabled = true;
+        btn.innerHTML = '<div class="spinner"></div> Verifying…';
+        try {
+            const res = await fetch('/api/verify', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({}),
+            });
+            const d = await res.json();
+            if (d.success) {
+                const state = d.overall_state;
+                showToast(
+                    state === 'GREEN' ? '✅ All events verified — GREEN' : `🚨 Integrity violation: ${state}`,
+                    state === 'GREEN' ? 'green' : 'red'
+                );
+            } else {
+                showToast(`⚠️ ${d.error}`, 'red');
+            }
+        } catch(e) {
+            showToast('❌ Verification failed', 'red');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '🔍 Verify Integrity';
+            fetchStatus(); fetchAlerts();
+        }
+    }
+
+    async function resetDemo() {
+        if (!confirm('Reset demo? This clears all alerts and regenerates events.\nBlockchain data is preserved.')) return;
+        const btn = document.getElementById('btn-reset');
+        btn.disabled = true;
+        btn.innerHTML = '<div class="spinner"></div> Resetting…';
+        try {
+            const res = await fetch('/api/demo/reset', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({}),
+            });
+            const d = await res.json();
+            showToast(`✅ Demo reset. ${d.events_generated} events ready.`, 'green');
+        } catch(e) {
+            showToast('❌ Reset failed', 'red');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '🔄 Reset Demo';
+            fetchStatus(); fetchAlerts();
+        }
+    }
+
+    // Poll every 5 seconds
+    fetchStatus();
+    fetchAlerts();
+    setInterval(() => { fetchStatus(); fetchAlerts(); }, 5000);
+</script>
+</body>
+</html>
