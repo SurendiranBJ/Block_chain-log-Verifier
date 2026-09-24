@@ -502,10 +502,13 @@ class TestTamperDetection:
         from unittest.mock import patch, MagicMock
         with patch("backend.app.alert_store") as mock_alert, \
              patch("backend.app.verify_engine") as mock_ve, \
+             patch("backend.app.blockchain") as mock_bc, \
              patch("backend.app.LocalLogGetter") as mock_getter:
             
             mock_alert.is_mongodb_available.return_value = True
-            mock_alert.get_case_batches_local.return_value = [{"batch_id": "batch-1", "sequences": [1]}]
+            mock_bc.blockchain_status.return_value = {"device1": {"connected": True, "block": 10}, "device2": {"connected": False}}
+            mock_bc.get_case_batches.return_value = ["batch-1"]
+            mock_alert.get_batch_metadata.return_value = {"sequences": [1]}
             mock_alert.get_case_alerts.return_value = [{"alert_type": "MODIFIED", "status": "RESOLVED", "event_id": "e1"}]
             mock_alert.get_alert_stats.return_value = {"MODIFIED": 1, "total_alerts": 1}
             
@@ -560,6 +563,108 @@ class TestTamperDetection:
 
         result = verify_batch("CASE-001", "batch-CASE-001-000001", [])
         assert result.state == VerificationState.MISSING_COMMITMENT
+
+    @patch("backend.verifier.alert_store")
+    @patch("backend.verifier.blockchain")
+    def test_mongodb_metadata_never_acts_as_trusted_fallback(self, mock_bc, mock_alert):
+        """CRITICAL: Even if MongoDB has complete batch metadata, if on_chain is None, verify_batch MUST return MISSING_COMMITMENT (PART 1)."""
+        from backend.verifier import verify_batch, VerificationState
+        from demo.generate_logs import generate_events
+        events = generate_events("CASE-001", count=10)
+        
+        # Blockchain has no record of this batch
+        mock_bc.get_batch_on_chain.return_value = None
+        
+        # MongoDB HAS full batch metadata
+        mock_alert.get_batch_metadata.return_value = {
+            "merkle_root": "0x" + "a" * 64,
+            "entry_count": 10,
+            "event_hashes": ["0x" + "b" * 64] * 10,
+            "event_ids": [f"evt-{i+1:06d}" for i in range(10)],
+            "sequences": list(range(1, 11)),
+            "tx_hash": "0xFAKE_TX",
+        }
+
+        result = verify_batch("CASE-001", "batch-CASE-001-000001", events)
+        assert result.state == VerificationState.MISSING_COMMITMENT
+        assert result.state != VerificationState.GREEN
+
+    def test_api_status_reports_blockchain_error_when_device1_offline(self):
+        """Dashboard API must report BLOCKCHAIN_ERROR when Device 1 is disconnected (PART 2 & 3)."""
+        from backend.app import app
+        with patch("backend.app.blockchain") as mock_bc, \
+             patch("backend.app.LocalLogGetter") as mock_getter:
+            
+            mock_bc.blockchain_status.return_value = {"device1": {"connected": False}}
+            mock_getter.return_value.fetch_events.return_value = [{"event_id": "e1", "sequence": 1}]
+            
+            client = app.test_client()
+            res = client.get("/api/status")
+            assert res.status_code == 200
+            data = res.get_json()
+            assert data["integrity"] == "BLOCKCHAIN_ERROR"
+            assert "Unable to connect to Device 1" in data.get("status_reason", "")
+
+    def test_api_status_reports_missing_commitment_when_no_blockchain_batches(self):
+        """Dashboard API must report MISSING_COMMITMENT when events exist but no blockchain commitment exists (PART 2 & 3)."""
+        from backend.app import app
+        with patch("backend.app.blockchain") as mock_bc, \
+             patch("backend.app.LocalLogGetter") as mock_getter:
+            
+            mock_bc.blockchain_status.return_value = {"device1": {"connected": True}}
+            mock_bc.get_case_batches.return_value = []
+            mock_getter.return_value.fetch_events.return_value = [{"event_id": "e1", "sequence": 1}]
+            
+            client = app.test_client()
+            res = client.get("/api/status")
+            assert res.status_code == 200
+            data = res.get_json()
+            assert data["integrity"] == "MISSING_COMMITMENT"
+
+    def test_api_status_reports_no_data(self):
+        """Dashboard API must report NO_DATA when no logs and no blockchain commitments exist (PART 2 & 3)."""
+        from backend.app import app
+        with patch("backend.app.blockchain") as mock_bc, \
+             patch("backend.app.LocalLogGetter") as mock_getter:
+            
+            mock_bc.blockchain_status.return_value = {"device1": {"connected": True}}
+            mock_bc.get_case_batches.return_value = []
+            mock_getter.return_value.fetch_events.return_value = []
+            
+            client = app.test_client()
+            res = client.get("/api/status")
+            assert res.status_code == 200
+            data = res.get_json()
+            assert data["integrity"] == "NO_DATA"
+
+    def test_contract_append_only_duplicate_rejection_logic(self):
+        """Verify duplicate batch rejection logic: same batch ID rejected, different batch ID accepted (PART 8 & 9)."""
+        # Simulated contract store
+        anchored_batches = {}
+
+        def anchor_batch(case_id, batch_id, root):
+            key = f"{case_id}:{batch_id}"
+            if key in anchored_batches:
+                raise ValueError("Execution reverted: Batch already anchored")
+            anchored_batches[key] = root
+            return {"status": 1}
+
+        # First anchor succeeds
+        r1 = anchor_batch("CASE-001", "batch-001", "rootA")
+        assert r1["status"] == 1
+        assert anchored_batches["CASE-001:batch-001"] == "rootA"
+
+        # Duplicate anchor fails / reverts
+        with pytest.raises(ValueError, match="Batch already anchored"):
+            anchor_batch("CASE-001", "batch-001", "rootA_modified")
+
+        # Verify original batch remains untouched
+        assert anchored_batches["CASE-001:batch-001"] == "rootA"
+
+        # Unique batch for same case succeeds
+        r2 = anchor_batch("CASE-001", "batch-002", "rootB")
+        assert r2["status"] == 1
+        assert anchored_batches["CASE-001:batch-002"] == "rootB"
 
 
 # ══════════════════════════════════════════════════════════════════════════

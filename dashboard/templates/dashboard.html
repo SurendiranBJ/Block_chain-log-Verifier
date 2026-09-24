@@ -89,6 +89,9 @@
             animation: pulse 2s infinite;
         }
         .pulse.red { background: var(--red); box-shadow: 0 0 0 0 rgba(255,71,87,0.4); }
+        .pulse.orange { background: var(--orange); box-shadow: 0 0 0 0 rgba(255,165,2,0.4); }
+        .pulse.purple { background: var(--purple); box-shadow: 0 0 0 0 rgba(165,94,234,0.4); }
+        .pulse.gray { background: var(--text-muted); box-shadow: 0 0 0 0 rgba(150,150,150,0.4); }
         @keyframes pulse {
             0%   { box-shadow: 0 0 0 0 rgba(0,224,150,0.4); }
             70%  { box-shadow: 0 0 0 8px rgba(0,224,150,0); }
@@ -116,6 +119,18 @@
             border: 1px solid rgba(255,71,87,0.4);
             animation: redPulse 2s infinite;
         }
+        #integrity-banner.orange {
+            background: linear-gradient(135deg, rgba(255,165,2,0.15), rgba(255,165,2,0.05));
+            border: 1px solid rgba(255,165,2,0.4);
+        }
+        #integrity-banner.purple {
+            background: linear-gradient(135deg, rgba(165,94,234,0.15), rgba(165,94,234,0.05));
+            border: 1px solid rgba(165,94,234,0.4);
+        }
+        #integrity-banner.gray {
+            background: linear-gradient(135deg, rgba(100,100,100,0.15), rgba(50,50,50,0.05));
+            border: 1px solid rgba(100,100,100,0.4);
+        }
         @keyframes redPulse {
             0%,100% { box-shadow: 0 0 0 0 rgba(255,71,87,0); }
             50%      { box-shadow: 0 0 20px rgba(255,71,87,0.2); }
@@ -128,14 +143,20 @@
         }
         #integrity-banner.green::before { background: var(--green); }
         #integrity-banner.red::before   { background: var(--red); }
+        #integrity-banner.orange::before { background: var(--orange); }
+        #integrity-banner.purple::before { background: var(--purple); }
+        #integrity-banner.gray::before   { background: var(--text-muted); }
 
         .banner-status {
-            font-size: 42px; font-weight: 800; letter-spacing: -2px;
-            line-height: 1;
+            font-size: 38px; font-weight: 800; letter-spacing: -1.5px;
+            line-height: 1.1;
         }
-        .banner-status.green { color: var(--green); }
-        .banner-status.red   { color: var(--red); }
-        .banner-label { font-size: 13px; color: var(--text-muted); margin-top: 6px; letter-spacing: 1px; text-transform: uppercase; }
+        .banner-status.green  { color: var(--green); }
+        .banner-status.red    { color: var(--red); }
+        .banner-status.orange { color: var(--orange); }
+        .banner-status.purple { color: var(--purple); }
+        .banner-status.gray   { color: var(--text-muted); }
+        .banner-label { font-size: 13px; color: var(--text-muted); margin-top: 8px; letter-spacing: 0.5px; text-transform: uppercase; font-weight: 500; }
         .banner-case  { text-align: right; }
         .banner-case-id { font-family: var(--mono); font-size: 20px; font-weight: 600; color: var(--green); }
         .banner-case-label { font-size: 12px; color: var(--text-muted); letter-spacing: 1px; text-transform: uppercase; }
@@ -339,7 +360,7 @@
     <div id="integrity-banner" class="green">
         <div>
             <div class="banner-status green" id="banner-state">CHECKING…</div>
-            <div class="banner-label">Cryptographic Integrity Status</div>
+            <div class="banner-label" id="banner-label">Cryptographic Integrity Status</div>
         </div>
         <div style="display:flex; gap:24px; align-items:center;">
             <div class="banner-case">
@@ -540,24 +561,63 @@
             const d = await res.json();
 
             alertStats = d.alert_stats || {};
-            const integrity = d.integrity || 'GREEN';
+            const integrity = d.integrity || 'NO_DATA';
 
-            // Banner
+            // Distinct banner & header states (PART 4)
             const banner = document.getElementById('integrity-banner');
             const bannerState = document.getElementById('banner-state');
-            const bannerState2 = bannerState;
-            banner.className = integrity === 'GREEN' ? 'green' : 'red';
-            bannerState.textContent  = integrity === 'GREEN' ? '✅ ALL VERIFIED' : '🚨 INTEGRITY VIOLATION';
-            bannerState.className    = `banner-status ${integrity === 'GREEN' ? 'green' : 'red'}`;
+            const bannerLabel = document.getElementById('banner-label');
+            const pulseDot = document.getElementById('pulse-dot');
+            const headerText = document.getElementById('header-status-text');
+
+            let bannerClass = 'gray';
+            let statusText = '⚪ NO DATA';
+            let subText = d.status_reason || 'No logs or blockchain commitments present';
+            let headStatus = 'No Data';
+            let pulseClass = 'pulse gray';
+
+            if (integrity === 'GREEN') {
+                bannerClass = 'green';
+                statusText = '✅ INTEGRITY VERIFIED';
+                subText = d.status_reason || 'Current case data matches immutable blockchain commitment.';
+                headStatus = 'Integrity Verified';
+                pulseClass = 'pulse';
+            } else if (integrity === 'RED') {
+                bannerClass = 'red';
+                statusText = '🚨 INTEGRITY VIOLATION';
+                subText = d.status_reason || 'Cryptographic mismatch detected against blockchain commitment!';
+                headStatus = 'INTEGRITY VIOLATION';
+                pulseClass = 'pulse red';
+            } else if (integrity === 'BLOCKCHAIN_ERROR') {
+                bannerClass = 'orange';
+                statusText = '⚠️ BLOCKCHAIN VERIFICATION UNAVAILABLE';
+                subText = d.status_reason || 'Unable to retrieve immutable commitment from Device 1.';
+                headStatus = 'Blockchain Unavailable';
+                pulseClass = 'pulse orange';
+            } else if (integrity === 'MISSING_COMMITMENT') {
+                bannerClass = 'purple';
+                statusText = '🔒 NO TRUSTED COMMITMENT';
+                subText = d.status_reason || `No blockchain batch exists for ${d.case_id || 'case'}.`;
+                headStatus = 'No Commitment';
+                pulseClass = 'pulse purple';
+            } else if (integrity === 'NO_DATA') {
+                bannerClass = 'gray';
+                statusText = '⚪ NO DATA';
+                subText = d.status_reason || 'No data or commitments found.';
+                headStatus = 'No Data';
+                pulseClass = 'pulse gray';
+            }
+
+            banner.className = bannerClass;
+            bannerState.textContent = statusText;
+            bannerState.className = `banner-status ${bannerClass}`;
+            if (bannerLabel) bannerLabel.textContent = subText;
+            pulseDot.className = pulseClass;
+            headerText.textContent = headStatus;
+
             // Update case & batch
             document.getElementById('banner-case-id').textContent = d.case_id || '—';
             document.getElementById('banner-batch-id').textContent = d.current_batch || '—';
-
-            // Header pulse
-            const pd = document.getElementById('pulse-dot');
-            pd.className = integrity === 'GREEN' ? 'pulse' : 'pulse red';
-            document.getElementById('header-status-text').textContent =
-                integrity === 'GREEN' ? 'All Systems Nominal' : 'INTEGRITY VIOLATION';
 
             // Stats
             const stats = d.statistics || {};

@@ -19,6 +19,7 @@ sys.path.insert(0, str(_PROJECT_ROOT))
 from backend.config import (
     FLASK_SECRET_KEY, FLASK_DEBUG, FLASK_PORT,
     CONTRACT_ADDRESS, get_current_case_id, set_current_case_id,
+    DEVICE1_RPC,
 )
 from backend import blockchain, alerts as alert_store
 from backend.pipeline import ingest_events, PipelineError
@@ -79,16 +80,6 @@ def api_status():
 
     getter = LocalLogGetter()
     events = getter.fetch_events(case_id)
-    batches = alert_store.get_case_batches_local(case_id)
-
-    # Check on-chain if local empty
-    if not batches:
-        onchain_batch_ids = blockchain.get_case_batches(case_id)
-        batches = [{"batch_id": bid} for bid in onchain_batch_ids]
-
-    current_batch_id = batches[-1]["batch_id"] if batches else "None"
-    integrity = "GREEN"
-    active_violations = []
 
     stats = {
         "total":      len(events),
@@ -98,37 +89,87 @@ def api_status():
         "unexpected": 0,
         "reordered":  0,
     }
+    active_violations = []
+    latest_alert = None
+    status_reason = ""
+    current_batch_id = "None"
+    integrity = "NO_DATA"
 
-    if batches:
-        for batch_meta in batches:
-            batch_id = batch_meta["batch_id"]
-            seq_list = batch_meta.get("sequences", [])
-            if seq_list:
-                batch_events = [e for e in events if e.get("sequence") in seq_list]
+    # 1. Check Device 1 connection first
+    device1_connected = chain_status.get("device1", {}).get("connected", False)
+    if not device1_connected:
+        integrity = "BLOCKCHAIN_ERROR"
+        status_reason = "Blockchain Verification Unavailable: Unable to connect to Device 1."
+    else:
+        # 2. Query batches directly from blockchain
+        try:
+            onchain_batch_ids = blockchain.get_case_batches(case_id)
+        except Exception as e:
+            integrity = "BLOCKCHAIN_ERROR"
+            status_reason = f"Blockchain Verification Unavailable: {e}"
+            onchain_batch_ids = []
+
+        if integrity != "BLOCKCHAIN_ERROR":
+            if not onchain_batch_ids:
+                if not events:
+                    integrity = "NO_DATA"
+                    status_reason = "No Data: No log events or blockchain commitments found."
+                else:
+                    integrity = "MISSING_COMMITMENT"
+                    status_reason = f"No Trusted Commitment: No blockchain batch exists for {case_id}."
             else:
-                batch_events = events
+                current_batch_id = onchain_batch_ids[-1]
+                batch_states = []
 
-            res = verify_engine.verify_batch(case_id, batch_id, batch_events)
-            state_val = getattr(res.state, "value", str(res.state))
-            if state_val != "GREEN":
-                integrity = "RED"
+                for batch_id in onchain_batch_ids:
+                    local_meta = alert_store.get_batch_metadata(case_id, batch_id) or {}
+                    seq_list = local_meta.get("sequences", [])
+                    batch_events = [e for e in events if e.get("sequence") in seq_list] if seq_list else events
 
-            for er in res.event_results:
-                er_val = getattr(er.state, "value", str(er.state))
-                if er_val == "GREEN":
-                    stats["verified"] += 1
-                elif er_val == "MODIFIED":
-                    stats["modified"] += 1
-                    active_violations.append(_er_to_dict(er))
-                elif er_val == "DELETED":
-                    stats["deleted"] += 1
-                    active_violations.append(_er_to_dict(er))
-                elif er_val == "UNEXPECTED":
-                    stats["unexpected"] += 1
-                    active_violations.append(_er_to_dict(er))
-                elif er_val == "REORDERED":
-                    stats["reordered"] += 1
-                    active_violations.append(_er_to_dict(er))
+                    res = verify_engine.verify_batch(case_id, batch_id, batch_events)
+                    batch_states.append(res.state)
+
+                    for er in res.event_results:
+                        er_val = getattr(er.state, "value", str(er.state))
+                        if er_val == "GREEN":
+                            stats["verified"] += 1
+                        elif er_val == "MODIFIED":
+                            stats["modified"] += 1
+                            active_violations.append(_er_to_dict(er))
+                        elif er_val == "DELETED":
+                            stats["deleted"] += 1
+                            active_violations.append(_er_to_dict(er))
+                        elif er_val == "UNEXPECTED":
+                            stats["unexpected"] += 1
+                            active_violations.append(_er_to_dict(er))
+                        elif er_val == "REORDERED":
+                            stats["reordered"] += 1
+                            active_violations.append(_er_to_dict(er))
+
+                # Derive current integrity state
+                if any(s == verify_engine.VerificationState.BLOCKCHAIN_ERROR for s in batch_states):
+                    integrity = "BLOCKCHAIN_ERROR"
+                    status_reason = "Blockchain error occurred during batch verification."
+                elif any(s == verify_engine.VerificationState.MISSING_COMMITMENT for s in batch_states):
+                    integrity = "MISSING_COMMITMENT"
+                    status_reason = f"No Trusted Commitment: Batch commitment missing for case {case_id}."
+                elif any(s in (
+                    verify_engine.VerificationState.MODIFIED,
+                    verify_engine.VerificationState.DELETED,
+                    verify_engine.VerificationState.UNEXPECTED,
+                    verify_engine.VerificationState.REORDERED
+                ) for s in batch_states):
+                    integrity = "RED"
+                    status_reason = "Integrity Violation: Tampering detected against immutable blockchain commitment."
+                elif all(s == verify_engine.VerificationState.GREEN for s in batch_states) and stats["verified"] > 0:
+                    integrity = "GREEN"
+                    status_reason = "Integrity Verified: Current data matches immutable blockchain commitment."
+                elif not events:
+                    integrity = "NO_DATA"
+                    status_reason = "No Data."
+                else:
+                    integrity = "MISSING_COMMITMENT"
+                    status_reason = f"No Trusted Commitment for case {case_id}."
 
     # Determine latest alert
     latest_alert = active_violations[0] if active_violations else None
@@ -154,6 +195,7 @@ def api_status():
         "blockchain":        chain_status,
         "mongodb":           {"available": mongo_ok},
         "integrity":         integrity,
+        "status_reason":     status_reason,
         "case_id":           case_id,
         "current_batch":     current_batch_id,
         "contract":          CONTRACT_ADDRESS or "Not deployed",
@@ -218,22 +260,38 @@ def api_verify():
 
     getter  = LocalLogGetter()
     events  = getter.fetch_events(case_id)
-    batches = alert_store.get_case_batches_local(case_id)
 
-    if not batches:
-        onchain_batch_ids = blockchain.get_case_batches(case_id)
-        batches = [{"batch_id": bid} for bid in onchain_batch_ids]
-
-    if not batches:
+    w3 = blockchain.get_w3(1)
+    if not w3.is_connected():
         return jsonify({
             "success": False,
-            "error":   f"No batch metadata found on blockchain or local for {case_id}. Run ingestion first.",
+            "case_id": case_id,
+            "overall_state": "BLOCKCHAIN_ERROR",
+            "error": f"Cannot connect to Device 1 blockchain node at {DEVICE1_RPC}",
+        }), 503
+
+    try:
+        onchain_batch_ids = blockchain.get_case_batches(case_id)
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "case_id": case_id,
+            "overall_state": "BLOCKCHAIN_ERROR",
+            "error": f"Blockchain query error: {e}",
+        }), 503
+
+    if not onchain_batch_ids:
+        return jsonify({
+            "success": False,
+            "case_id": case_id,
+            "overall_state": "MISSING_COMMITMENT",
+            "error": f"No blockchain batch commitments found for {case_id}. Run ingestion first.",
         }), 404
 
     results_by_batch = []
-    for batch_meta in batches:
-        batch_id = batch_meta["batch_id"]
-        seq_list = batch_meta.get("sequences", [])
+    for batch_id in onchain_batch_ids:
+        local_meta = alert_store.get_batch_metadata(case_id, batch_id) or {}
+        seq_list = local_meta.get("sequences", [])
         batch_events = [e for e in events if e.get("sequence") in seq_list] if seq_list else events
 
         result = verify_engine.verify_batch(case_id, batch_id, batch_events)
@@ -257,11 +315,17 @@ def api_verify():
             ],
         })
 
-    overall = "GREEN"
-    for r in results_by_batch:
-        if r["state"] != "GREEN":
-            overall = r["state"]
-            break
+    all_states = [r["state"] for r in results_by_batch]
+    if any(s == "BLOCKCHAIN_ERROR" for s in all_states):
+        overall = "BLOCKCHAIN_ERROR"
+    elif any(s == "MISSING_COMMITMENT" for s in all_states):
+        overall = "MISSING_COMMITMENT"
+    elif any(s in ("MODIFIED", "DELETED", "UNEXPECTED", "REORDERED") for s in all_states):
+        overall = "RED"
+    elif all(s == "GREEN" for s in all_states):
+        overall = "GREEN"
+    else:
+        overall = all_states[0] if all_states else "NO_DATA"
 
     return jsonify({
         "success":        True,
@@ -279,12 +343,23 @@ def api_demo_reset():
     2. Clears demo MongoDB state for previous runs
     3. Generates NEW unique demo case ID
     4. Generates fresh events
-    5. Ingests and anchors new batch with unique batch ID
-    6. Verifies clean state -> dashboard GREEN
+    5. Confirms blockchain connection
+    6. Ingests and anchors new batch with unique batch ID (verifies receipt.status == 1)
+    7. Verifies clean state against blockchain -> returns GREEN
+    Fails with HTTP 500/503 if blockchain anchoring or retrieval fails.
     """
     from demo.generate_logs import generate_events
     now_str = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     new_case_id = f"CASE-DEMO-{now_str}"
+
+    # Check blockchain connection
+    w3 = blockchain.get_w3(1)
+    if not w3.is_connected():
+        return jsonify({
+            "success": False,
+            "stage": "Blockchain connection",
+            "error": f"Cannot connect to Device 1 blockchain node at {DEVICE1_RPC}",
+        }), 503
 
     set_current_case_id(new_case_id)
     cleared_alerts = alert_store.clear_demo_alerts()
@@ -295,17 +370,43 @@ def api_demo_reset():
     getter.write_events(new_case_id, events)
 
     # Ingest & Anchor new batch
-    ingest_res = ingest_events(events)
+    try:
+        ingest_res = ingest_events(events)
+        batch_id = ingest_res.get("batch_id")
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "stage": "Anchor transaction",
+            "error": str(e),
+        }), 500
+
+    # Retrieve batch directly from blockchain
+    on_chain = blockchain.get_batch_on_chain(new_case_id, batch_id)
+    if not on_chain:
+        return jsonify({
+            "success": False,
+            "stage": "Batch retrieval",
+            "error": f"Batch {batch_id} could not be retrieved from blockchain after anchoring",
+        }), 500
+
+    # Verify directly against blockchain
+    vres = verify_engine.verify_batch(new_case_id, batch_id, events)
+    if vres.state != verify_engine.VerificationState.GREEN:
+        return jsonify({
+            "success": False,
+            "stage": "Verification",
+            "error": f"Verification state is {vres.state.value}",
+        }), 500
 
     return jsonify({
         "success":          True,
         "case_id":          new_case_id,
-        "batch_id":         ingest_res.get("batch_id"),
+        "batch_id":         batch_id,
         "cleared_alerts":   cleared_alerts,
         "cleared_batches":  cleared_batches,
         "events_generated": len(events),
-        "status":           ingest_res.get("status"),
-        "verification":     ingest_res.get("verification"),
+        "status":           "ANCHORED",
+        "verification":     "GREEN",
         "message":          f"Demo reset successfully with fresh case {new_case_id}.",
     })
 

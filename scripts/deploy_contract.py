@@ -181,7 +181,9 @@ def main():
     assert batch_data[3] == True, "getBatch returned exists=False"
     print(f"    [PASS] getBatch retrieval succeeded")
 
-    # 10. Duplicate rejection test
+    # 10. Duplicate rejection test (PART 8)
+    print(f"\n[10] Testing duplicate batch rejection...")
+    duplicate_rejected = False
     try:
         dup_tx = contract.functions.anchorBatch(
             "TEST-CASE",
@@ -192,15 +194,57 @@ def main():
             [1],
             ["b" * 64],
         ).build_transaction({
-            "chainId": CHAIN_ID, "gas": 200000,
+            "chainId": CHAIN_ID,
+            "gas": 300000,
             "gasPrice": w3.to_wei("1", "gwei"),
             "nonce": w3.eth.get_transaction_count(account),
         })
         signed_dup = w3.eth.account.sign_transaction(dup_tx, BLOCKCHAIN_PRIVATE_KEY)
-        w3.eth.send_raw_transaction(signed_dup.raw_transaction)
-        print("    [WARN] Duplicate was accepted (unexpected)")
-    except Exception as e:
-        print(f"    [PASS] Duplicate batch correctly rejected")
+        dup_tx_hash = w3.eth.send_raw_transaction(signed_dup.raw_transaction)
+        dup_receipt = w3.eth.wait_for_transaction_receipt(dup_tx_hash)
+        if dup_receipt["status"] == 0:
+            duplicate_rejected = True
+        else:
+            print("    [FAIL] Contract accepted duplicate batch (receipt status == 1)")
+            sys.exit(1)
+    except Exception:
+        # Reverted on simulation or node check
+        duplicate_rejected = True
+
+    if duplicate_rejected:
+        print("    [PASS] Duplicate transaction reverted as expected")
+    else:
+        print("    [FAIL] Contract accepted duplicate batch")
+        sys.exit(1)
+
+    # 11. Append-only immutability test (PART 9)
+    print(f"\n[11] Verifying append-only immutability...")
+    batch_data_after = contract.functions.getBatch("TEST-CASE", "batch-TEST-CASE-000001").call()
+    assert batch_data_after[0] == "a" * 64, "Original batch data was modified!"
+    print("    [PASS] Original batch data remains unchanged")
+
+    # Anchor different batch ID for same case (must succeed)
+    new_batch_tx = contract.functions.anchorBatch(
+        "TEST-CASE",
+        "batch-TEST-CASE-000002",
+        "c" * 64,
+        1,
+        ["evt-002"],
+        [2],
+        ["d" * 64],
+    ).build_transaction({
+        "chainId": CHAIN_ID,
+        "gas": 500000,
+        "gasPrice": w3.to_wei("1", "gwei"),
+        "nonce": w3.eth.get_transaction_count(account),
+    })
+    signed_new = w3.eth.account.sign_transaction(new_batch_tx, BLOCKCHAIN_PRIVATE_KEY)
+    new_tx_hash = w3.eth.send_raw_transaction(signed_new.raw_transaction)
+    new_receipt = w3.eth.wait_for_transaction_receipt(new_tx_hash)
+    if new_receipt["status"] != 1:
+        print("    [FAIL] New unique batch for same case failed")
+        sys.exit(1)
+    print("    [PASS] Unique second batch accepted for same case")
 
     print("\n============================================================")
     print(f" DEPLOYMENT COMPLETE")

@@ -107,28 +107,20 @@ def verify_batch(
             case_id=case_id,
             batch_id=batch_id,
             state=VerificationState.BLOCKCHAIN_ERROR,
-            message=str(e),
+            message=f"Blockchain verification unavailable: {e}",
         )
 
-    # Also load local metadata for fallback or tx_hash
+    if on_chain is None:
+        return BatchVerificationResult(
+            case_id=case_id,
+            batch_id=batch_id,
+            state=VerificationState.MISSING_COMMITMENT,
+            message=f"No blockchain commitment found for batch {batch_id}",
+        )
+
+    # Optional UI metadata (tx_hash only, not cryptographic truth)
     local_meta = alert_store.get_batch_metadata(case_id, batch_id) or {}
     tx_hash = local_meta.get("tx_hash", "")
-
-    if on_chain is None:
-        if local_meta:
-            on_chain = {
-                "merkle_root": local_meta.get("merkle_root", ""),
-                "entry_count": local_meta.get("entry_count", 0),
-                "event_hashes": local_meta.get("event_hashes", []),
-                "event_ids": local_meta.get("event_ids", []),
-                "event_sequences": local_meta.get("sequences", []),
-            }
-        else:
-            return BatchVerificationResult(
-                case_id=case_id,
-                batch_id=batch_id,
-                state=VerificationState.MISSING_COMMITMENT,
-            )
 
     committed_hashes: list[str] = on_chain.get("event_hashes", [])
     committed_root: str = on_chain.get("merkle_root", "")
@@ -136,13 +128,7 @@ def verify_batch(
     committed_event_ids: list[str] = on_chain.get("event_ids", [])
     committed_sequences: list[int] = on_chain.get("event_sequences", [])
 
-    # Fallback to local_meta if on_chain didn't have IDs/sequences populated
-    if not committed_event_ids and local_meta and isinstance(local_meta, dict):
-        committed_event_ids = local_meta.get("event_ids", [])
-    if not committed_sequences and local_meta and isinstance(local_meta, dict):
-        committed_sequences = local_meta.get("sequences", [])
-
-    # Fallback to sequential IDs if not provided
+    # If V3 contract didn't store IDs/sequences, generate canonical sequential defaults
     if not committed_event_ids:
         committed_event_ids = [f"evt-{i+1:06d}" for i in range(len(committed_hashes))]
     if not committed_sequences:
@@ -373,12 +359,20 @@ def verify_case(
         case_id: Case identifier
         current_events_by_batch: {batch_id: [events]} mapping
     """
-    batch_ids = blockchain.get_case_batches(case_id)
+    try:
+        batch_ids = blockchain.get_case_batches(case_id)
+    except Exception as e:
+        logger.error(f"Blockchain error fetching case batches for {case_id}: {e}")
+        return CaseVerificationResult(
+            case_id=case_id,
+            overall_state=VerificationState.BLOCKCHAIN_ERROR,
+            summary={"error": f"Blockchain connection error: {e}"},
+        )
     if not batch_ids:
         return CaseVerificationResult(
             case_id=case_id,
             overall_state=VerificationState.MISSING_COMMITMENT,
-            summary={"error": "No batches found on blockchain"},
+            summary={"error": f"No batches found on blockchain for case {case_id}"},
         )
 
     batch_results = []
@@ -419,24 +413,37 @@ def verify_event(
 ) -> EventVerificationResult:
     """
     Verify a single event against all batches for the case.
-    Searches through batches to find where this event_id was committed.
+    Searches through on-chain batches to find where this event_id was committed.
     """
-    batch_ids = blockchain.get_case_batches(case_id)
+    try:
+        batch_ids = blockchain.get_case_batches(case_id)
+    except Exception as e:
+        return EventVerificationResult(
+            event_id=event_id,
+            sequence=current_event.get("sequence", 0),
+            state=VerificationState.BLOCKCHAIN_ERROR,
+            message=f"Blockchain connection error: {e}",
+        )
+
     for batch_id in batch_ids:
-        local_meta = alert_store.get_batch_metadata(case_id, batch_id)
-        if not local_meta:
+        try:
+            on_chain = blockchain.get_batch_on_chain(case_id, batch_id)
+        except Exception:
             continue
-        event_ids_list = local_meta.get("event_ids", [])
+        if not on_chain:
+            continue
+        event_ids_list = on_chain.get("event_ids", [])
         if event_id not in event_ids_list:
             continue
         idx = event_ids_list.index(event_id)
-        committed_hashes = local_meta.get("event_hashes", [])
+        committed_hashes = on_chain.get("event_hashes", [])
         if idx >= len(committed_hashes):
             continue
         committed_hash = committed_hashes[idx]
         actual_hash    = hash_event(current_event)
+        local_meta     = alert_store.get_batch_metadata(case_id, batch_id) or {}
         tx_hash        = local_meta.get("tx_hash", "")
-        merkle_root    = local_meta.get("merkle_root", "")
+        merkle_root    = on_chain.get("merkle_root", "")
 
         if actual_hash == committed_hash:
             return EventVerificationResult(
@@ -467,5 +474,5 @@ def verify_event(
         event_id=event_id,
         sequence=current_event.get("sequence", 0),
         state=VerificationState.MISSING_COMMITMENT,
-        message=f"Event {event_id} not found in any batch for case {case_id}",
+        message=f"Event {event_id} has no commitment in any blockchain batch for {case_id}",
     )

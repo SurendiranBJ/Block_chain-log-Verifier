@@ -2,6 +2,7 @@
 LogChain - Append-Only Blockchain-Safe Demo Reset
 Preserves the blockchain, generates a fresh unique demo case ID and batch,
 anchors to the append-only blockchain, and resets verification to GREEN.
+Fails with non-zero exit code if any stage fails.
 
 Usage:
     python scripts/reset_demo.py
@@ -28,59 +29,71 @@ def reset_demo(count: int = 100) -> str:
     print(" LogChain - Append-Only Demo Reset")
     print("============================================================")
 
-    # 1. Preserve blockchain: Generate a NEW unique demo case ID
+    # Stage 1: Generate case
     now_str = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     new_case_id = f"CASE-RUN-{now_str}"
     print(f"\n[1] Generated fresh active case ID: {new_case_id}")
     set_current_case_id(new_case_id)
 
-    # 2. Clear MongoDB demo alerts
-    print("\n[2] Clearing previous demo MongoDB alerts...")
+    # Stage 2: Clear MongoDB demo alerts & metadata
+    print("\n[2] Clearing previous demo MongoDB alerts & metadata...")
     cleared_alerts = alert_store.clear_demo_alerts()
+    alert_store.clear_batch_metadata()
     print(f"    [PASS] Cleared {cleared_alerts} historical alerts")
 
-    # 3. Generate fresh clean events
+    # Stage 3: Generate clean events
     print(f"\n[3] Generating {count} clean events for {new_case_id}...")
     events = generate_events(case_id=new_case_id, count=count)
     getter = LocalLogGetter()
     getter.write_events(new_case_id, events)
     print(f"    [PASS] Generated and saved {len(events)} events")
 
-    # 4. Ingest and Anchor to blockchain (if contract deployed and node online)
-    print("\n[4] Ingesting and anchoring to blockchain...")
+    # Stage 4: Check blockchain connection
+    print("\n[4] Checking blockchain connection...")
     try:
-        result = ingest_events(events)
-        print(f"    [PASS] Batch anchored: {result['batch_id']}")
-        print(f"    Tx Hash:  {result.get('transaction_hash', 'N/A')}")
-        print(f"    Status:   {result.get('status', 'ANCHORED')}")
+        w3 = blockchain.get_w3(1)
+        if not w3.is_connected():
+            print(f"    [FAIL] Blockchain connection: Cannot connect to Device 1 at {blockchain.DEVICE1_RPC}")
+            sys.exit(1)
     except Exception as e:
-        print(f"    [WARN] Ingestion/anchoring warning: {e}")
-        print("    If running without live Geth node, local metadata is ready.")
+        print(f"    [FAIL] Blockchain connection: {e}")
+        sys.exit(1)
+    print("    [PASS] Blockchain connection: Device 1 online")
 
-    # 5. Verify clean state
-    print("\n[5] Running verification...")
-    batches = alert_store.get_case_batches_local(new_case_id)
-    if not batches:
-        onchain_batch_ids = blockchain.get_case_batches(new_case_id)
-        batches = [{"batch_id": bid} for bid in onchain_batch_ids]
+    # Stage 5: Anchor
+    print("\n[5] Anchoring batch to blockchain...")
+    try:
+        ingest_res = ingest_events(events)
+        batch_id = ingest_res["batch_id"]
+        tx_hash = ingest_res.get("transaction_hash", "N/A")
+        print(f"    [PASS] Anchor transaction: Batch {batch_id} confirmed (tx: {tx_hash})")
+    except Exception as e:
+        print(f"    [FAIL] Anchor transaction: {e}")
+        sys.exit(1)
 
-    all_green = True
-    if batches:
-        for bm in batches:
-            seq_list = bm.get("sequences", [])
-            batch_events = [e for e in events if e.get("sequence") in seq_list] if seq_list else events
-            vres = ve.verify_batch(new_case_id, bm["batch_id"], batch_events)
-            if vres.state != ve.VerificationState.GREEN:
-                all_green = False
-                print(f"    [FAIL] Batch {bm['batch_id']} verification state: {vres.state}")
-            else:
-                print(f"    [PASS] Batch {bm['batch_id']} verification: GREEN")
+    # Stage 6: Batch retrieval from blockchain
+    print("\n[6] Retrieving batch directly from blockchain...")
+    try:
+        on_chain = blockchain.get_batch_on_chain(new_case_id, batch_id)
+        if not on_chain or not on_chain.get("exists", True):
+            print(f"    [FAIL] Batch retrieval: Batch {batch_id} not found on chain")
+            sys.exit(1)
+    except Exception as e:
+        print(f"    [FAIL] Batch retrieval: {e}")
+        sys.exit(1)
+    print(f"    [PASS] Batch retrieval: Confirmed Merkle root on chain: {on_chain['merkle_root'][:16]}...")
 
+    # Stage 7: Verify current events against blockchain
+    print("\n[7] Verifying current events against blockchain...")
+    vres = ve.verify_batch(new_case_id, batch_id, events)
+    if vres.state != ve.VerificationState.GREEN:
+        print(f"    [FAIL] Verification: Expected GREEN but got {vres.state.value}")
+        sys.exit(1)
+    print(f"    [PASS] Verification: All {len(events)} events match blockchain commitment (GREEN)")
+
+    # Stage 8: Success
     print("\n============================================================")
-    if all_green:
-        print(" DEMO RESET SUCCESSFUL: DASHBOARD GREEN")
-    else:
-        print(" DEMO RESET COMPLETED WITH WARNINGS")
+    print(" DEMO RESET SUCCESSFUL: DASHBOARD GREEN")
     print(f" Active Case: {new_case_id}")
     print("============================================================")
     return new_case_id

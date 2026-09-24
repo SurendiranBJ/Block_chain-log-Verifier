@@ -145,8 +145,10 @@ def anchor_batch(
     logger.info(f"Batch anchor tx sent: {tx_hash.hex()}")
 
     receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
-    if receipt["status"] != 1:
-        raise RuntimeError(f"Transaction failed: {tx_hash.hex()}")
+    if not receipt or receipt.get("status") != 1:
+        raise RuntimeError(
+            f"Transaction failed or reverted: {tx_hash.hex()} (receipt status: {receipt.get('status') if receipt else 'None'})"
+        )
 
     logger.info(
         f"Batch {batch_id} anchored at block {receipt['blockNumber']}"
@@ -162,61 +164,53 @@ def anchor_batch(
 def get_batch_on_chain(case_id: str, batch_id: str) -> Optional[dict]:
     """
     Retrieve an anchored batch from the blockchain.
-    Returns None if not found.
+    Returns None if not found on chain (exists == False).
+    Raises ConnectionError if blockchain is unreachable.
+    Raises Exception on contract/RPC call failure.
     """
-    try:
-        w3 = get_w3(1)
-        if not w3.is_connected():
-            logger.error("Device 1 not connected")
-            return None
-        contract = get_contract(w3)
-        result = contract.functions.getBatch(case_id, batch_id).call()
-        # Returns: (merkleRoot, entryCount, timestamp, exists, eventIds, eventSequences, eventHashes)
-        if not result[3]:  # exists == False
-            return None
-        return {
-            "merkle_root":     result[0],
-            "entry_count":     result[1],
-            "timestamp":       result[2],
-            "exists":          result[3],
-            "event_ids":       list(result[4]),
-            "event_sequences": [int(s) for s in result[5]],
-            "event_hashes":    list(result[6]),
-        }
-    except Exception as e:
-        logger.error(f"get_batch_on_chain error: {e}")
+    w3 = get_w3(1)
+    if not w3.is_connected():
+        raise ConnectionError(f"Cannot connect to Device 1 at {DEVICE1_RPC}")
+
+    contract = get_contract(w3)
+    result = contract.functions.getBatch(case_id, batch_id).call()
+    # Returns: (merkleRoot, entryCount, timestamp, exists, eventIds, eventSequences, eventHashes)
+    if not result[3]:  # exists == False
         return None
+    return {
+        "merkle_root":     result[0],
+        "entry_count":     result[1],
+        "timestamp":       result[2],
+        "exists":          result[3],
+        "event_ids":       list(result[4]),
+        "event_sequences": [int(s) for s in result[5]],
+        "event_hashes":    list(result[6]),
+    }
 
 
 def get_event_identity_on_chain(case_id: str, batch_id: str, index: int) -> Optional[dict]:
     """Retrieve event identity from chain by index."""
-    try:
-        w3 = get_w3(1)
-        if not w3.is_connected():
-            return None
-        contract = get_contract(w3)
-        eid, seq, h = contract.functions.getEventIdentity(case_id, batch_id, index).call()
-        return {
-            "event_id": eid,
-            "sequence": int(seq),
-            "event_hash": h,
-        }
-    except Exception as e:
-        logger.error(f"get_event_identity_on_chain error: {e}")
-        return None
+    w3 = get_w3(1)
+    if not w3.is_connected():
+        raise ConnectionError(f"Cannot connect to Device 1 at {DEVICE1_RPC}")
+
+    contract = get_contract(w3)
+    eid, seq, h = contract.functions.getEventIdentity(case_id, batch_id, index).call()
+    return {
+        "event_id": eid,
+        "sequence": int(seq),
+        "event_hash": h,
+    }
 
 
 def get_case_batches(case_id: str) -> list[str]:
-    """Get list of all batch IDs for a case."""
-    try:
-        w3 = get_w3(1)
-        if not w3.is_connected():
-            return []
-        contract = get_contract(w3)
-        return list(contract.functions.getCaseBatches(case_id).call())
-    except Exception as e:
-        logger.error(f"get_case_batches error: {e}")
-        return []
+    """Get list of all batch IDs for a case directly from blockchain."""
+    w3 = get_w3(1)
+    if not w3.is_connected():
+        raise ConnectionError(f"Cannot connect to Device 1 at {DEVICE1_RPC}")
+
+    contract = get_contract(w3)
+    return list(contract.functions.getCaseBatches(case_id).call())
 
 
 def batch_exists(case_id: str, batch_id: str) -> bool:
