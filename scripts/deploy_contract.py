@@ -74,22 +74,32 @@ def main():
     # 3. Compile
     print(f"\n[3] Compiling {CONTRACT_SOL.name}...")
     try:
-        install_solc("0.8.19", show_progress=True)
-    except Exception:
-        print("[WARN] Could not install solc 0.8.19 automatically")
+        install_solc("0.8.19", show_progress=False)
+    except Exception as e:
+        print(f"[WARN] solc installation check: {e}")
 
     with open(CONTRACT_SOL) as f:
         source = f.read()
 
-    compiled = compile_source(
-        source,
-        output_values=["abi", "bin"],
-        solc_version="0.8.19",
-    )
-    contract_id = list(compiled.keys())[0]
-    abi      = compiled[contract_id]["abi"]
-    bytecode = compiled[contract_id]["bin"]
-    print(f"[PASS] Compiled: {len(abi)} ABI entries")
+    try:
+        input_json = {
+            "language": "Solidity",
+            "sources": {"LogIntegrityV3.sol": {"content": source}},
+            "settings": {
+                "optimizer": {"enabled": True, "runs": 200},
+                "viaIR": True,
+                "outputSelection": {"*": {"*": ["abi", "evm.bytecode"]}},
+            },
+        }
+        compiled = solcx.compile_standard(input_json, solc_version="0.8.19")
+        cdata = compiled["contracts"]["LogIntegrityV3.sol"]["LogIntegrityV3"]
+        abi = cdata["abi"]
+        bytecode = cdata["evm"]["bytecode"]["object"]
+        print(f"[PASS] Compiled with viaIR: {len(abi)} ABI entries")
+    except Exception as e:
+        print(f"[ERROR] Failed to compile contract: {e}")
+        print("Ensure solc 0.8.19 is available. You can run: python -c 'import solcx; solcx.install_solc(\"0.8.19\")'")
+        sys.exit(1)
 
     # 4. Deploy
     print(f"\n[4] Deploying V3 contract...")
@@ -151,6 +161,8 @@ def main():
         "batch-TEST-CASE-000001",
         "a" * 64,
         1,
+        ["evt-001"],
+        [1],
         ["b" * 64],
     ).build_transaction({
         "chainId":  CHAIN_ID,
@@ -172,7 +184,13 @@ def main():
     # 10. Duplicate rejection test
     try:
         dup_tx = contract.functions.anchorBatch(
-            "TEST-CASE", "batch-TEST-CASE-000001", "a" * 64, 1, ["b" * 64],
+            "TEST-CASE",
+            "batch-TEST-CASE-000001",
+            "a" * 64,
+            1,
+            ["evt-001"],
+            [1],
+            ["b" * 64],
         ).build_transaction({
             "chainId": CHAIN_ID, "gas": 200000,
             "gasPrice": w3.to_wei("1", "gwei"),

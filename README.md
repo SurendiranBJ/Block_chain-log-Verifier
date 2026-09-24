@@ -50,16 +50,17 @@ Dashboard  MongoDB Alerts
 pip install -r requirements.txt
 ```
 
-### 2. Configure environment
+### 2. Configure environment & fresh validators
 ```bash
 cp .env.example .env
-# Generate fresh key: python scripts/preflight_check.py --gen-key
+# Setup fresh validator keys & genesis (no hardcoded credentials):
+python scripts/setup_private_chain.py
 # Fill in: BLOCKCHAIN_PRIVATE_KEY, BLOCKCHAIN_ACCOUNT, FLASK_SECRET_KEY
 ```
 
 ### 3. Start Geth nodes
 ```bash
-./scripts/start_device1.sh   # Device 1 (primary)
+./scripts/start_device1.sh   # Device 1 (primary validator)
 ./scripts/start_device2.sh   # Device 2 (independent validator)
 ./scripts/connect_nodes.sh   # Peer them
 ./scripts/verify_network.sh  # Confirm status
@@ -67,7 +68,8 @@ cp .env.example .env
 
 ### 4. Deploy V3 contract
 ```bash
-python scripts/deploy_contract.py
+./scripts/deploy_contract.sh
+# or: python3 scripts/deploy_contract.py
 # Add CONTRACT_ADDRESS= to .env
 ```
 
@@ -79,9 +81,20 @@ python backend/app.py        # Start dashboard: http://localhost:5000
 
 ### 6. Demo attacks
 ```bash
-python scripts/modify_event.py --case CASE-001 --sequence 51  # RED: MODIFIED
-python scripts/delete_event.py --case CASE-001 --sequence 51  # RED: DELETED
-./scripts/reset_demo.sh                                        # GREEN: reset
+# 1. Modify event in the middle:
+python scripts/modify_event.py --sequence 51
+
+# 2. Delete event in the middle (exact detection, zero cascading false alarms):
+python scripts/delete_event.py --sequence 51
+
+# 3. Reorder events:
+python scripts/reorder_events.py --sequence-a 51 --sequence-b 52
+
+# 4. Insert unexpected uncommitted event:
+python scripts/insert_event.py --sequence 51
+
+# Reset demo (preserves append-only blockchain, unique run case):
+./scripts/reset_demo.sh
 ```
 
 ---
@@ -95,7 +108,7 @@ python scripts/preflight_check.py
 
 ## Test Suite
 ```bash
-pytest tests/   # 61 tests: canonical, SHA-256, Merkle, pipeline, verification, adapters
+pytest tests/   # 67 unit & integration tests
 ```
 
 ---
@@ -105,10 +118,10 @@ pytest tests/   # 61 tests: canonical, SHA-256, Merkle, pipeline, verification, 
 ```
 backend/           Core pipeline (canonical, hashing, merkle, blockchain, verifier, alerts)
 adapters/          Log getter adapters (local + AWS/Azure stubs)
-contracts/         LogIntegrityV3.sol (append-only, duplicate-protected)
+contracts/         LogIntegrityV3.sol (append-only, event identity protected)
 scripts/           Start/connect/deploy/demo/attack scripts
 demo/              Event generator + sample_logs/
-tests/             61-test pytest suite
+tests/             67-test pytest suite (unit + tests/integration/)
 docs/              ARCHITECTURE.md, FRIEND_INTEGRATION.md, DEMO_RUNBOOK.md, SECURITY.md
 legacy/            Original pre-refactor code (preserved for reference)
 .env.example       Configuration template

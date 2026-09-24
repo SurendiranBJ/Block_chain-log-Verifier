@@ -341,9 +341,37 @@
             <div class="banner-status green" id="banner-state">CHECKING…</div>
             <div class="banner-label">Cryptographic Integrity Status</div>
         </div>
-        <div class="banner-case">
-            <div class="banner-case-id" id="banner-case-id">—</div>
-            <div class="banner-case-label">Active Case</div>
+        <div style="display:flex; gap:24px; align-items:center;">
+            <div class="banner-case">
+                <div class="banner-case-id" id="banner-case-id">—</div>
+                <div class="banner-case-label">Active Case</div>
+            </div>
+            <div class="banner-case">
+                <div class="banner-case-id" id="banner-batch-id" style="font-size:14px;">—</div>
+                <div class="banner-case-label">Current Batch</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Active Attack Panel (Fix #16) -->
+    <div id="active-attack-panel" style="display:none; margin-bottom: 24px; padding: 20px; border-radius: 12px; background: rgba(255, 71, 87, 0.08); border: 1px solid rgba(255, 71, 87, 0.4);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-size:18px;">🚨</span>
+                <span style="font-weight:700; font-size:16px; color:var(--red);">INTEGRITY VIOLATION DETECTED</span>
+                <span id="viol-type-tag" class="alert-type-tag tag-modified">MODIFIED</span>
+            </div>
+            <span id="viol-time" style="font-size:12px; color:var(--text-muted);">—</span>
+        </div>
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom:12px; font-size: 13px;">
+            <div><span style="color:var(--text-muted)">Event ID:</span> <span id="viol-id" style="font-family:var(--mono); font-weight:600; color:var(--text-primary);">—</span></div>
+            <div><span style="color:var(--text-muted)">Sequence:</span> <span id="viol-seq" style="font-weight:600; color:var(--text-primary);">—</span></div>
+            <div><span style="color:var(--text-muted)">Batch:</span> <span id="viol-batch" style="font-family:var(--mono); color:var(--text-dim);">—</span></div>
+        </div>
+        <div style="padding:12px; background:rgba(0,0,0,0.35); border-radius:8px; font-family:var(--mono); font-size:12px; line-height:1.6;">
+            <div><span style="color:var(--text-muted)">Expected Hash: </span><span id="viol-expected" style="color:var(--green)">—</span></div>
+            <div><span style="color:var(--text-muted)">Actual Hash:   </span><span id="viol-actual" style="color:var(--red)">—</span></div>
+            <div style="margin-top:6px; color:var(--text-dim);"><strong style="color:var(--text-primary)">Message:</strong> <span id="viol-msg">—</span></div>
         </div>
     </div>
 
@@ -361,8 +389,8 @@
         </div>
         <div class="card">
             <div class="card-label">Violations</div>
-            <div class="card-value stat-red" id="stat-violations">—</div>
-            <div class="card-sub">MODIFIED + DELETED + other</div>
+            <div class="card-value stat-red" id="stat-violations">0</div>
+            <div class="card-sub" id="stat-violations-sub">0 Mod · 0 Del · 0 Unexp · 0 Reord</div>
         </div>
         <div class="card">
             <div class="card-label">Latest Block</div>
@@ -521,7 +549,9 @@
             banner.className = integrity === 'GREEN' ? 'green' : 'red';
             bannerState.textContent  = integrity === 'GREEN' ? '✅ ALL VERIFIED' : '🚨 INTEGRITY VIOLATION';
             bannerState.className    = `banner-status ${integrity === 'GREEN' ? 'green' : 'red'}`;
+            // Update case & batch
             document.getElementById('banner-case-id').textContent = d.case_id || '—';
+            document.getElementById('banner-batch-id').textContent = d.current_batch || '—';
 
             // Header pulse
             const pd = document.getElementById('pulse-dot');
@@ -530,10 +560,34 @@
                 integrity === 'GREEN' ? 'All Systems Nominal' : 'INTEGRITY VIOLATION';
 
             // Stats
-            const totalAlerts = (alertStats.total_alerts || 0);
-            document.getElementById('stat-violations').textContent = totalAlerts;
+            const stats = d.statistics || {};
+            document.getElementById('stat-total').textContent = stats.total ?? '—';
+            document.getElementById('stat-verified').textContent = stats.verified ?? '—';
+            const violCount = (stats.modified || 0) + (stats.deleted || 0) + (stats.unexpected || 0) + (stats.reordered || 0);
+            document.getElementById('stat-violations').textContent = violCount;
+            document.getElementById('stat-violations-sub').textContent =
+                `${stats.modified || 0} Mod · ${stats.deleted || 0} Del · ${stats.unexpected || 0} Unexp · ${stats.reordered || 0} Reord`;
             document.getElementById('stat-block').textContent =
                 (d.blockchain?.device1?.block ?? '—').toString();
+
+            // Active attack panel (Fix #16)
+            const attackPanel = document.getElementById('active-attack-panel');
+            if (integrity === 'RED' && d.latest_alert) {
+                const la = d.latest_alert;
+                attackPanel.style.display = 'block';
+                const tag = document.getElementById('viol-type-tag');
+                tag.textContent = la.type || 'VIOLATION';
+                tag.className = `alert-type-tag tag-${(la.type || 'modified').toLowerCase()}`;
+                document.getElementById('viol-id').textContent = la.event_id || '—';
+                document.getElementById('viol-seq').textContent = la.sequence ?? '—';
+                document.getElementById('viol-batch').textContent = la.batch_id || d.current_batch || '—';
+                document.getElementById('viol-expected').textContent = la.expected_hash || 'none';
+                document.getElementById('viol-actual').textContent = la.actual_hash || 'MISSING';
+                document.getElementById('viol-msg').textContent = la.message || 'Integrity check failed';
+                document.getElementById('viol-time').textContent = la.timestamp ? new Date(la.timestamp).toLocaleTimeString() : 'just now';
+            } else {
+                attackPanel.style.display = 'none';
+            }
 
             // Node 1
             const n1 = d.blockchain?.device1 || {};

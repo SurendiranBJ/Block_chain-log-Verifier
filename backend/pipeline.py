@@ -105,18 +105,23 @@ def ingest_events(events: list[dict]) -> dict:
         )
 
     # Step 5: Anchor to blockchain
+    tx_hash = "0xOFFLINE_PENDING"
+    anchor_error = None
     try:
         anchor_result = blockchain.anchor_batch(
             case_id=case_id,
             batch_id=batch_id,
             merkle_root=merkle_root,
             entry_count=len(event_hashes),
+            event_ids=event_ids,
+            event_sequences=sequences,
             event_hashes=event_hashes,
         )
         tx_hash = anchor_result["tx_hash"]
         logger.info(f"Anchored at tx: {tx_hash}")
     except Exception as e:
-        raise PipelineError(f"Blockchain anchor failed: {e}")
+        anchor_error = e
+        logger.warning(f"Blockchain anchor failed (saving local metadata fallback): {e}")
 
     # Step 6: Persist local metadata
     alert_store.save_batch_metadata(
@@ -129,6 +134,9 @@ def ingest_events(events: list[dict]) -> dict:
         event_ids=event_ids,
         sequences=sequences,
     )
+
+    if anchor_error:
+        raise PipelineError(f"Blockchain anchor failed: {anchor_error}")
 
     # Step 7: Immediate verification
     try:

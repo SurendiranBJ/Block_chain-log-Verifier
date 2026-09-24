@@ -30,6 +30,7 @@ offset_tracker.json
 deployment.json
 demo/sample_logs/*.json
 demo/sample_logs/*.log
+demo/current_case.json
 
 # --- Python ---
 __pycache__/

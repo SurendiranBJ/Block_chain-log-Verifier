@@ -1,7 +1,7 @@
 """
 LogChain - Flask Dashboard & API
 Zero-Trust Cross-Cloud Log Integrity System
-Judge-friendly dashboard with integrity visualization.
+Judge-friendly dashboard with live integrity and exact attack visualization.
 """
 import json
 import logging
@@ -13,11 +13,12 @@ from pathlib import Path
 from flask import Flask, jsonify, render_template, request, abort
 import markupsafe
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_PROJECT_ROOT))
 
 from backend.config import (
     FLASK_SECRET_KEY, FLASK_DEBUG, FLASK_PORT,
-    DEMO_CASE_ID, CONTRACT_ADDRESS,
+    CONTRACT_ADDRESS, get_current_case_id, set_current_case_id,
 )
 from backend import blockchain, alerts as alert_store
 from backend.pipeline import ingest_events, PipelineError
@@ -30,8 +31,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__, template_folder="templates", static_folder="static")
+template_dir = str(_PROJECT_ROOT / "dashboard" / "templates")
+static_dir = str(_PROJECT_ROOT / "dashboard" / "static")
+
+app = Flask(__name__, template_folder=template_dir, static_folder=static_dir)
 app.secret_key = FLASK_SECRET_KEY
+
 
 # ── Security Headers ───────────────────────────────────────────────────────
 @app.after_request
@@ -42,36 +47,130 @@ def add_security_headers(response):
     return response
 
 
+def _er_to_dict(er: verify_engine.EventVerificationResult) -> dict:
+    """Format an EventVerificationResult into an alert dict."""
+    return {
+        "type":          er.state.value,
+        "event_id":      er.event_id,
+        "sequence":      er.sequence,
+        "expected_hash": er.expected_hash,
+        "actual_hash":   er.actual_hash,
+        "batch_id":      er.batch_id,
+        "merkle_root":   er.merkle_root,
+        "message":       er.message,
+        "timestamp":     datetime.now(timezone.utc).isoformat(),
+        "status":        "ACTIVE",
+    }
+
+
 # ── API Routes ─────────────────────────────────────────────────────────────
 
 @app.route("/api/status")
 def api_status():
-    """System status for dashboard polling."""
+    """
+    System status for dashboard polling representing CURRENT verification.
+    GREEN = current data matches immutable blockchain commitment.
+    RED   = current integrity violation exists.
+    Historical alerts remain in database but do NOT force RED if data is clean.
+    """
+    case_id = get_current_case_id()
     chain_status = blockchain.blockchain_status()
-    alert_stats  = alert_store.get_alert_stats(DEMO_CASE_ID)
     mongo_ok     = alert_store.is_mongodb_available()
 
-    # Determine overall integrity state
-    alerts = alert_store.get_case_alerts(DEMO_CASE_ID, limit=1)
-    integrity = "GREEN" if not alerts else "RED"
+    getter = LocalLogGetter()
+    events = getter.fetch_events(case_id)
+    batches = alert_store.get_case_batches_local(case_id)
+
+    # Check on-chain if local empty
+    if not batches:
+        onchain_batch_ids = blockchain.get_case_batches(case_id)
+        batches = [{"batch_id": bid} for bid in onchain_batch_ids]
+
+    current_batch_id = batches[-1]["batch_id"] if batches else "None"
+    integrity = "GREEN"
+    active_violations = []
+
+    stats = {
+        "total":      len(events),
+        "verified":   0,
+        "modified":   0,
+        "deleted":    0,
+        "unexpected": 0,
+        "reordered":  0,
+    }
+
+    if batches:
+        for batch_meta in batches:
+            batch_id = batch_meta["batch_id"]
+            seq_list = batch_meta.get("sequences", [])
+            if seq_list:
+                batch_events = [e for e in events if e.get("sequence") in seq_list]
+            else:
+                batch_events = events
+
+            res = verify_engine.verify_batch(case_id, batch_id, batch_events)
+            state_val = getattr(res.state, "value", str(res.state))
+            if state_val != "GREEN":
+                integrity = "RED"
+
+            for er in res.event_results:
+                er_val = getattr(er.state, "value", str(er.state))
+                if er_val == "GREEN":
+                    stats["verified"] += 1
+                elif er_val == "MODIFIED":
+                    stats["modified"] += 1
+                    active_violations.append(_er_to_dict(er))
+                elif er_val == "DELETED":
+                    stats["deleted"] += 1
+                    active_violations.append(_er_to_dict(er))
+                elif er_val == "UNEXPECTED":
+                    stats["unexpected"] += 1
+                    active_violations.append(_er_to_dict(er))
+                elif er_val == "REORDERED":
+                    stats["reordered"] += 1
+                    active_violations.append(_er_to_dict(er))
+
+    # Determine latest alert
+    latest_alert = active_violations[0] if active_violations else None
+    if not latest_alert:
+        hist = alert_store.get_case_alerts(case_id, limit=1)
+        if hist:
+            h = hist[0]
+            latest_alert = {
+                "type":          h.get("alert_type"),
+                "event_id":      h.get("event_id"),
+                "sequence":      h.get("sequence"),
+                "expected_hash": h.get("expected_hash", ""),
+                "actual_hash":   h.get("actual_hash", ""),
+                "batch_id":      h.get("batch_id", ""),
+                "message":       h.get("extra", {}).get("message", h.get("message", f"{h.get('alert_type')} detected")),
+                "timestamp":     h.get("timestamp"),
+                "status":        h.get("status", "HISTORICAL"),
+            }
+
+    alert_stats = alert_store.get_alert_stats(case_id)
 
     return jsonify({
-        "blockchain":  chain_status,
-        "mongodb":     {"available": mongo_ok},
-        "integrity":   integrity,
-        "case_id":     DEMO_CASE_ID,
-        "contract":    CONTRACT_ADDRESS or "Not deployed",
-        "alert_stats": alert_stats,
-        "timestamp":   datetime.now(timezone.utc).isoformat(),
+        "blockchain":        chain_status,
+        "mongodb":           {"available": mongo_ok},
+        "integrity":         integrity,
+        "case_id":           case_id,
+        "current_batch":     current_batch_id,
+        "contract":          CONTRACT_ADDRESS or "Not deployed",
+        "statistics":        stats,
+        "alert_stats":       alert_stats,
+        "active_violations": active_violations,
+        "latest_alert":      latest_alert,
+        "timestamp":         datetime.now(timezone.utc).isoformat(),
     })
 
 
 @app.route("/api/alerts")
 def api_alerts():
-    """Get recent alerts."""
-    case_id   = request.args.get("case_id", DEMO_CASE_ID)
-    limit     = min(int(request.args.get("limit", 50)), 200)
-    alerts    = alert_store.get_case_alerts(case_id, limit=limit)
+    """Get recent alerts for the case."""
+    case_id = request.args.get("case_id", get_current_case_id())
+    limit   = min(int(request.args.get("limit", 50)), 200)
+    alerts  = alert_store.get_case_alerts(case_id, limit=limit)
     return jsonify({"alerts": alerts, "count": len(alerts)})
 
 
@@ -79,9 +178,9 @@ def api_alerts():
 def api_ingest():
     """
     POST /api/ingest
-    Body: {"case_id": "CASE-001", "events": [...]}
-
-    This is the clean integration point for cloud adapters.
+    Body: {"case_id": "...", "events": [...]}
+    Cloud adapter integration boundary.
+    Validates schema, canonicalizes, SHA-256 hashes, Merkle batches, anchors, verifies.
     """
     data = request.get_json(force=True, silent=True)
     if not data:
@@ -91,7 +190,7 @@ def api_ingest():
     if not events or not isinstance(events, list):
         return jsonify({"success": False, "error": "Missing or invalid 'events' array"}), 400
 
-    case_id = data.get("case_id", DEMO_CASE_ID)
+    case_id = data.get("case_id", get_current_case_id())
     for e in events:
         if not isinstance(e, dict):
             return jsonify({"success": False, "error": "Each event must be a dict"}), 400
@@ -111,45 +210,50 @@ def api_ingest():
 def api_verify():
     """
     POST /api/verify
-    Body: {"case_id": "CASE-001"}
-    Runs verification and returns results.
+    Body: {"case_id": "..."}
+    Verifies CURRENT case data directly against blockchain commitments.
     """
     data    = request.get_json(force=True, silent=True) or {}
-    case_id = data.get("case_id", DEMO_CASE_ID)
+    case_id = data.get("case_id", get_current_case_id())
 
     getter  = LocalLogGetter()
     events  = getter.fetch_events(case_id)
     batches = alert_store.get_case_batches_local(case_id)
 
     if not batches:
+        onchain_batch_ids = blockchain.get_case_batches(case_id)
+        batches = [{"batch_id": bid} for bid in onchain_batch_ids]
+
+    if not batches:
         return jsonify({
             "success": False,
-            "error":   f"No local batch metadata found for {case_id}. Run ingestion first.",
+            "error":   f"No batch metadata found on blockchain or local for {case_id}. Run ingestion first.",
         }), 404
 
     results_by_batch = []
     for batch_meta in batches:
         batch_id = batch_meta["batch_id"]
         seq_list = batch_meta.get("sequences", [])
-        batch_events = [e for e in events if e.get("sequence") in seq_list]
+        batch_events = [e for e in events if e.get("sequence") in seq_list] if seq_list else events
 
         result = verify_engine.verify_batch(case_id, batch_id, batch_events)
         results_by_batch.append({
             "batch_id":    batch_id,
             "state":       result.state.value,
             "entry_count": result.entry_count,
+            "merkle_root": result.merkle_root,
             "summary":     result.summary,
             "events": [
                 {
-                    "event_id":     r.event_id,
-                    "sequence":     r.sequence,
-                    "state":        r.state.value,
+                    "event_id":      r.event_id,
+                    "sequence":      r.sequence,
+                    "state":         r.state.value,
                     "expected_hash": r.expected_hash[:16] + "..." if r.expected_hash else "",
                     "actual_hash":   r.actual_hash[:16] + "..." if r.actual_hash else "",
-                    "message":      r.message,
+                    "message":       r.message,
                 }
                 for r in result.event_results
-                if r.state.value != "GREEN"  # only violations
+                if r.state.value != "GREEN"
             ],
         })
 
@@ -169,25 +273,40 @@ def api_verify():
 
 @app.route("/api/demo/reset", methods=["POST"])
 def api_demo_reset():
-    """Reset demo state (clears alerts, regenerates events)."""
-    case_id = request.get_json(force=True, silent=True) or {}
-    case_id = case_id.get("case_id", DEMO_CASE_ID)
-
-    cleared_alerts = alert_store.clear_demo_alerts(case_id)
-    cleared_batches = alert_store.clear_batch_metadata(case_id)
-
-    # Regenerate events
+    """
+    Reset demo with append-only blockchain:
+    1. Preserves blockchain
+    2. Clears demo MongoDB state for previous runs
+    3. Generates NEW unique demo case ID
+    4. Generates fresh events
+    5. Ingests and anchors new batch with unique batch ID
+    6. Verifies clean state -> dashboard GREEN
+    """
     from demo.generate_logs import generate_events
-    events = generate_events(case_id=case_id, count=100)
+    now_str = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    new_case_id = f"CASE-DEMO-{now_str}"
+
+    set_current_case_id(new_case_id)
+    cleared_alerts = alert_store.clear_demo_alerts()
+    cleared_batches = alert_store.clear_batch_metadata()
+
+    events = generate_events(case_id=new_case_id, count=100)
     getter = LocalLogGetter()
-    getter.write_events(case_id, events)
+    getter.write_events(new_case_id, events)
+
+    # Ingest & Anchor new batch
+    ingest_res = ingest_events(events)
 
     return jsonify({
-        "success":        True,
-        "cleared_alerts": cleared_alerts,
-        "cleared_batches": cleared_batches,
+        "success":          True,
+        "case_id":          new_case_id,
+        "batch_id":         ingest_res.get("batch_id"),
+        "cleared_alerts":   cleared_alerts,
+        "cleared_batches":  cleared_batches,
         "events_generated": len(events),
-        "message":        f"Demo reset for {case_id}. Run ingestion to re-anchor.",
+        "status":           ingest_res.get("status"),
+        "verification":     ingest_res.get("verification"),
+        "message":          f"Demo reset successfully with fresh case {new_case_id}.",
     })
 
 

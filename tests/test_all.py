@@ -308,11 +308,13 @@ class TestTamperDetection:
     def _mock_batch(self, events, batch_id="batch-CASE-001-000001"):
         hashes = self._hashes(events)
         return {
-            "merkle_root":  compute_merkle_root(hashes),
-            "entry_count":  len(hashes),
-            "timestamp":    1000000,
-            "exists":       True,
-            "event_hashes": hashes,
+            "merkle_root":     compute_merkle_root(hashes),
+            "entry_count":     len(hashes),
+            "timestamp":       1000000,
+            "exists":          True,
+            "event_ids":       [e["event_id"] for e in events],
+            "event_sequences": [e["sequence"] for e in events],
+            "event_hashes":    hashes,
         }
 
     def _mock_meta(self, events, batch_id="batch-CASE-001-000001"):
@@ -382,6 +384,84 @@ class TestTamperDetection:
 
     @patch("backend.verifier.alert_store")
     @patch("backend.verifier.blockchain")
+    def test_middle_deletion_detected(self, mock_bc, mock_alert):
+        """Test middle deletion: 100 events, delete event 51 -> exactly one DELETED, 0 MODIFIED"""
+        from backend.verifier import verify_batch, VerificationState
+        from demo.generate_logs import generate_events
+        original_events = generate_events(case_id="CASE-001", count=100)
+        mock_bc.get_batch_on_chain.return_value = self._mock_batch(original_events)
+        mock_alert.get_batch_metadata.return_value = self._mock_meta(original_events)
+        mock_alert.save_alert = MagicMock()
+
+        # Delete event 51 (index 50)
+        deleted_event = original_events[50]
+        tampered = original_events[:50] + original_events[51:]
+        assert len(tampered) == 99
+
+        result = verify_batch("CASE-001", "batch-CASE-001-000001", tampered)
+        assert result.state == VerificationState.DELETED
+        deleted = [r for r in result.event_results if r.state == VerificationState.DELETED]
+        assert len(deleted) == 1
+        assert deleted[0].sequence == 51
+        assert deleted[0].event_id == deleted_event["event_id"]
+        # Crucial check: NOT 50 modified events!
+        assert result.summary["modified"] == 0
+        assert result.summary["deleted"] == 1
+        assert result.summary["unexpected"] == 0
+        assert result.summary["reordered"] == 0
+        assert result.summary["green"] == 99
+
+    @patch("backend.verifier.alert_store")
+    @patch("backend.verifier.blockchain")
+    def test_middle_modification_detected(self, mock_bc, mock_alert):
+        """Test middle modification: 100 events, modify event 51 -> exactly one MODIFIED event"""
+        from backend.verifier import verify_batch, VerificationState
+        from demo.generate_logs import generate_events
+        original_events = generate_events(case_id="CASE-001", count=100)
+        mock_bc.get_batch_on_chain.return_value = self._mock_batch(original_events)
+        mock_alert.get_batch_metadata.return_value = self._mock_meta(original_events)
+        mock_alert.save_alert = MagicMock()
+
+        tampered = [e.copy() for e in original_events]
+        tampered[50]["message"] = "ATTACKER MODIFIED EVENT 51"
+
+        result = verify_batch("CASE-001", "batch-CASE-001-000001", tampered)
+        assert result.state == VerificationState.MODIFIED
+        modified = [r for r in result.event_results if r.state == VerificationState.MODIFIED]
+        assert len(modified) == 1
+        assert modified[0].sequence == 51
+        assert modified[0].event_id == original_events[50]["event_id"]
+        assert result.summary["modified"] == 1
+        assert result.summary["deleted"] == 0
+        assert result.summary["unexpected"] == 0
+        assert result.summary["reordered"] == 0
+        assert result.summary["green"] == 99
+
+    @patch("backend.verifier.alert_store")
+    @patch("backend.verifier.blockchain")
+    def test_reordered_event_detected(self, mock_bc, mock_alert):
+        """Test swap events 51 and 52 -> REORDERED detected"""
+        from backend.verifier import verify_batch, VerificationState
+        from demo.generate_logs import generate_events
+        original_events = generate_events(case_id="CASE-001", count=100)
+        mock_bc.get_batch_on_chain.return_value = self._mock_batch(original_events)
+        mock_alert.get_batch_metadata.return_value = self._mock_meta(original_events)
+        mock_alert.save_alert = MagicMock()
+
+        tampered = [e.copy() for e in original_events]
+        tampered[50]["sequence"] = 52
+        tampered[51]["sequence"] = 51
+        tampered[50], tampered[51] = tampered[51], tampered[50]
+
+        result = verify_batch("CASE-001", "batch-CASE-001-000001", tampered)
+        assert result.state == VerificationState.REORDERED
+        reordered = [r for r in result.event_results if r.state == VerificationState.REORDERED]
+        assert len(reordered) >= 1
+        assert result.summary["modified"] == 0
+        assert result.summary["reordered"] >= 1
+
+    @patch("backend.verifier.alert_store")
+    @patch("backend.verifier.blockchain")
     def test_unexpected_event_detected(self, mock_bc, mock_alert):
         from backend.verifier import verify_batch, VerificationState
         original_events = self._make_events(5)
@@ -397,6 +477,70 @@ class TestTamperDetection:
 
         unexpected = [r for r in result.event_results if r.state == VerificationState.UNEXPECTED]
         assert len(unexpected) == 1
+
+    @patch("backend.verifier.alert_store")
+    @patch("backend.verifier.blockchain")
+    def test_restored_clean_state_green(self, mock_bc, mock_alert):
+        """Test restore clean state -> GREEN"""
+        from backend.verifier import verify_batch, VerificationState
+        from demo.generate_logs import generate_events
+        original_events = generate_events(case_id="CASE-001", count=100)
+        mock_bc.get_batch_on_chain.return_value = self._mock_batch(original_events)
+        mock_alert.get_batch_metadata.return_value = self._mock_meta(original_events)
+        mock_alert.save_alert = MagicMock()
+
+        result = verify_batch("CASE-001", "batch-CASE-001-000001", original_events)
+        assert result.state == VerificationState.GREEN
+        assert result.summary["green"] == 100
+        assert result.summary["modified"] == 0
+        assert result.summary["deleted"] == 0
+
+    def test_historical_alert_does_not_force_red(self):
+        """Test old historical alerts in MongoDB do not force dashboard RED when clean"""
+        from backend.app import app
+        from backend.verifier import VerificationState, EventVerificationResult, BatchVerificationResult
+        from unittest.mock import patch, MagicMock
+        with patch("backend.app.alert_store") as mock_alert, \
+             patch("backend.app.verify_engine") as mock_ve, \
+             patch("backend.app.LocalLogGetter") as mock_getter:
+            
+            mock_alert.is_mongodb_available.return_value = True
+            mock_alert.get_case_batches_local.return_value = [{"batch_id": "batch-1", "sequences": [1]}]
+            mock_alert.get_case_alerts.return_value = [{"alert_type": "MODIFIED", "status": "RESOLVED", "event_id": "e1"}]
+            mock_alert.get_alert_stats.return_value = {"MODIFIED": 1, "total_alerts": 1}
+            
+            mock_getter.return_value.fetch_events.return_value = [{"event_id": "e1", "sequence": 1}]
+            clean_er = EventVerificationResult(
+                event_id="e1",
+                sequence=1,
+                state=VerificationState.GREEN,
+                expected_hash="h1",
+                actual_hash="h1",
+            )
+            mock_res = BatchVerificationResult(
+                case_id="CASE-001",
+                batch_id="batch-1",
+                state=VerificationState.GREEN,
+                event_results=[clean_er],
+            )
+            mock_ve.verify_batch.return_value = mock_res
+            mock_ve.VerificationState = VerificationState
+            
+            client = app.test_client()
+            res = client.get("/api/status")
+            assert res.status_code == 200
+            data = res.get_json()
+            assert data["integrity"] == "GREEN"
+
+    def test_unique_batch_ids_across_runs(self):
+        """Test unique batch IDs across separate demo runs"""
+        from backend.merkle import make_batch_id
+        b1 = make_batch_id("CASE-RUN-001", 1)
+        b2 = make_batch_id("CASE-RUN-002", 1)
+        assert b1 != b2
+        b3 = make_batch_id("CASE-RUN-001", 1, run_id="RUN-A")
+        b4 = make_batch_id("CASE-RUN-001", 1, run_id="RUN-B")
+        assert b3 != b4
 
     @patch("backend.verifier.alert_store")
     @patch("backend.verifier.blockchain")

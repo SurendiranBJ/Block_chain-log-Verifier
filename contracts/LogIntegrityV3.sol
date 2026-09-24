@@ -13,14 +13,14 @@ pragma solidity ^0.8.19;
  * - A batch ID CANNOT be reused (duplicate protection).
  * - Only authorized writer accounts can anchor batches.
  * - Owner can add/remove writers (access control).
- * - Event hashes stored on-chain for tamper-evidence.
- * - No sensitive log content stored on-chain.
+ * - Event IDs, sequences, and hashes stored on-chain for tamper-evidence.
+ * - No sensitive raw log messages stored on-chain.
  *
  * Design principles:
  * - TAMPER-EVIDENT (not tamper-proof)
- * - INDEPENDENT VERIFICATION via event hash retrieval
+ * - INDEPENDENT VERIFICATION via event identity & hash retrieval
  * - CRYPTOGRAPHIC COMMITMENT of original log content
- * - DETECTS POST-COMMITMENT MODIFICATIONS
+ * - DETECTS POST-COMMITMENT MODIFICATIONS, DELETIONS, REORDERING, INSERTIONS
  */
 contract LogIntegrityV3 {
 
@@ -61,11 +61,13 @@ contract LogIntegrityV3 {
     // ── Batch Data ────────────────────────────────────────────────────────
 
     struct Batch {
-        string  merkleRoot;     // SHA-256 Merkle root (hex string)
-        uint256 entryCount;     // Number of events in this batch
-        uint256 anchoredAt;     // Block timestamp when anchored
-        bool    exists;         // Duplicate protection flag
-        string[] eventHashes;   // Individual event SHA-256 hashes in sequence order
+        string    merkleRoot;     // SHA-256 Merkle root (hex string)
+        uint256   entryCount;     // Number of events in this batch
+        uint256   anchoredAt;     // Block timestamp when anchored
+        bool      exists;         // Duplicate protection flag
+        string[]  eventIds;       // Event IDs in committed sequence order
+        uint256[] eventSequences; // Event sequence numbers in committed order
+        string[]  eventHashes;    // Individual event SHA-256 hashes in sequence order
     }
 
     // caseId → batchId → Batch
@@ -93,15 +95,19 @@ contract LogIntegrityV3 {
     /**
      * Anchor a batch of events to the blockchain.
      *
-     * @param caseId       Investigation case identifier
-     * @param batchId      Unique batch identifier (append-only: cannot reuse)
-     * @param merkleRoot   SHA-256 Merkle root of all event hashes
-     * @param entryCount   Number of events in this batch
-     * @param eventHashes  SHA-256 hash of each event in sequence order
+     * @param caseId         Investigation case identifier
+     * @param batchId        Unique batch identifier (append-only: cannot reuse)
+     * @param merkleRoot     SHA-256 Merkle root of all event hashes
+     * @param entryCount     Number of events in this batch
+     * @param eventIds       List of event IDs in sequence order
+     * @param eventSequences List of event sequence numbers in sequence order
+     * @param eventHashes    SHA-256 hash of each event in sequence order
      *
      * Reverts if:
      * - batchId already exists (append-only, no overwrites)
-     * - merkleRoot or batchId is empty
+     * - merkleRoot or batchId or caseId is empty
+     * - entryCount == 0
+     * - eventIds, eventSequences, or eventHashes length mismatch entryCount
      * - caller is not an authorized writer
      */
     function anchorBatch(
@@ -109,13 +115,17 @@ contract LogIntegrityV3 {
         string   calldata batchId,
         string   calldata merkleRoot,
         uint256           entryCount,
+        string[] calldata eventIds,
+        uint256[] calldata eventSequences,
         string[] calldata eventHashes
     ) external onlyWriter {
-        require(bytes(batchId).length > 0,     "batchId cannot be empty");
-        require(bytes(merkleRoot).length > 0,  "merkleRoot cannot be empty");
-        require(bytes(caseId).length > 0,      "caseId cannot be empty");
-        require(entryCount > 0,                "entryCount must be > 0");
-        require(eventHashes.length == entryCount, "eventHashes length mismatch");
+        require(bytes(batchId).length > 0,           "batchId cannot be empty");
+        require(bytes(merkleRoot).length > 0,        "merkleRoot cannot be empty");
+        require(bytes(caseId).length > 0,            "caseId cannot be empty");
+        require(entryCount > 0,                      "entryCount must be > 0");
+        require(eventIds.length == entryCount,       "eventIds length mismatch");
+        require(eventSequences.length == entryCount, "eventSequences length mismatch");
+        require(eventHashes.length == entryCount,    "eventHashes length mismatch");
 
         bytes32 caseKey  = keccak256(abi.encodePacked(caseId));
         bytes32 batchKey = keccak256(abi.encodePacked(batchId));
@@ -126,18 +136,16 @@ contract LogIntegrityV3 {
             "Batch already anchored: append-only contract"
         );
 
-        // Store batch data
-        _batches[caseKey][batchKey] = Batch({
-            merkleRoot:  merkleRoot,
-            entryCount:  entryCount,
-            anchoredAt:  block.timestamp,
-            exists:      true,
-            eventHashes: new string[](0)
-        });
+        Batch storage b = _batches[caseKey][batchKey];
+        b.merkleRoot  = merkleRoot;
+        b.entryCount  = entryCount;
+        b.anchoredAt  = block.timestamp;
+        b.exists      = true;
 
-        // Store event hashes (separate push due to Solidity struct limitations)
-        for (uint256 i = 0; i < eventHashes.length; i++) {
-            _batches[caseKey][batchKey].eventHashes.push(eventHashes[i]);
+        for (uint256 i = 0; i < entryCount; i++) {
+            b.eventIds.push(eventIds[i]);
+            b.eventSequences.push(eventSequences[i]);
+            b.eventHashes.push(eventHashes[i]);
         }
 
         // Track case and batch ordering
@@ -153,8 +161,8 @@ contract LogIntegrityV3 {
     // ── Read ──────────────────────────────────────────────────────────────
 
     /**
-     * Get full batch data including all event hashes.
-     * Returns (merkleRoot, entryCount, anchoredAt, exists, eventHashes)
+     * Get full batch data including event IDs, sequences, and hashes.
+     * Returns (merkleRoot, entryCount, anchoredAt, exists, eventIds, eventSequences, eventHashes)
      */
     function getBatch(string calldata caseId, string calldata batchId)
         external
@@ -164,13 +172,39 @@ contract LogIntegrityV3 {
             uint256         entryCount,
             uint256         anchoredAt,
             bool            exists,
+            string[] memory eventIds,
+            uint256[] memory eventSequences,
             string[] memory eventHashes
         )
     {
         bytes32 caseKey  = keccak256(abi.encodePacked(caseId));
         bytes32 batchKey = keccak256(abi.encodePacked(batchId));
         Batch storage b  = _batches[caseKey][batchKey];
-        return (b.merkleRoot, b.entryCount, b.anchoredAt, b.exists, b.eventHashes);
+        return (
+            b.merkleRoot,
+            b.entryCount,
+            b.anchoredAt,
+            b.exists,
+            b.eventIds,
+            b.eventSequences,
+            b.eventHashes
+        );
+    }
+
+    /**
+     * Get identity and hash for a specific event within a batch by index (0-based).
+     */
+    function getEventIdentity(
+        string  calldata caseId,
+        string  calldata batchId,
+        uint256          index
+    ) external view returns (string memory eventId, uint256 sequence, string memory eventHash) {
+        bytes32 caseKey  = keccak256(abi.encodePacked(caseId));
+        bytes32 batchKey = keccak256(abi.encodePacked(batchId));
+        Batch storage b  = _batches[caseKey][batchKey];
+        require(b.exists,             "Batch not found");
+        require(index < b.entryCount, "Index out of range");
+        return (b.eventIds[index], b.eventSequences[index], b.eventHashes[index]);
     }
 
     /**
@@ -184,7 +218,7 @@ contract LogIntegrityV3 {
         bytes32 caseKey  = keccak256(abi.encodePacked(caseId));
         bytes32 batchKey = keccak256(abi.encodePacked(batchId));
         Batch storage b  = _batches[caseKey][batchKey];
-        require(b.exists,            "Batch not found");
+        require(b.exists,             "Batch not found");
         require(index < b.entryCount, "Index out of range");
         return b.eventHashes[index];
     }

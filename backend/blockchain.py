@@ -96,8 +96,10 @@ def anchor_batch(
     batch_id: str,
     merkle_root: str,
     entry_count: int,
+    event_ids: list[str],
+    event_sequences: list[int],
     event_hashes: list[str],
-    gas: int = 3000000,
+    gas: int = 3500000,
 ) -> dict:
     """
     Anchor a Merkle batch to the blockchain via V3 contract.
@@ -128,6 +130,8 @@ def anchor_batch(
         batch_id,
         merkle_root,
         entry_count,
+        event_ids,
+        event_sequences,
         event_hashes,
     ).build_transaction({
         "chainId":  CHAIN_ID,
@@ -167,18 +171,38 @@ def get_batch_on_chain(case_id: str, batch_id: str) -> Optional[dict]:
             return None
         contract = get_contract(w3)
         result = contract.functions.getBatch(case_id, batch_id).call()
-        # Returns: (merkleRoot, entryCount, timestamp, exists, eventHashes)
+        # Returns: (merkleRoot, entryCount, timestamp, exists, eventIds, eventSequences, eventHashes)
         if not result[3]:  # exists == False
             return None
         return {
-            "merkle_root":  result[0],
-            "entry_count":  result[1],
-            "timestamp":    result[2],
-            "exists":       result[3],
-            "event_hashes": list(result[4]),
+            "merkle_root":     result[0],
+            "entry_count":     result[1],
+            "timestamp":       result[2],
+            "exists":          result[3],
+            "event_ids":       list(result[4]),
+            "event_sequences": [int(s) for s in result[5]],
+            "event_hashes":    list(result[6]),
         }
     except Exception as e:
         logger.error(f"get_batch_on_chain error: {e}")
+        return None
+
+
+def get_event_identity_on_chain(case_id: str, batch_id: str, index: int) -> Optional[dict]:
+    """Retrieve event identity from chain by index."""
+    try:
+        w3 = get_w3(1)
+        if not w3.is_connected():
+            return None
+        contract = get_contract(w3)
+        eid, seq, h = contract.functions.getEventIdentity(case_id, batch_id, index).call()
+        return {
+            "event_id": eid,
+            "sequence": int(seq),
+            "event_hash": h,
+        }
+    except Exception as e:
+        logger.error(f"get_event_identity_on_chain error: {e}")
         return None
 
 

@@ -86,17 +86,19 @@ def verify_batch(
     current_events: list[dict],
 ) -> BatchVerificationResult:
     """
-    Verify a batch of events against the blockchain commitment.
+    Verify a batch of events against the blockchain commitment using EVENT IDENTITY.
 
-    Args:
-        case_id:        Case identifier
-        batch_id:       Batch identifier
-        current_events: Current normalized events (from adapter/local store)
-
-    Returns:
-        BatchVerificationResult with per-event states
+    Algorithm:
+      STEP 1: Load immutable committed data (event IDs, sequences, hashes, Merkle root)
+      STEP 2: Load current normalized events
+      STEP 3: Build identity maps current_by_id and committed_by_id
+      STEP 4: Detect DELETED (committed event ID missing in current)
+      STEP 5: Detect UNEXPECTED (current event ID not in committed)
+      STEP 6: Detect MODIFIED (content hash mismatch for same event ID)
+      STEP 7: Detect REORDERED (sequence shift or relative ordering mismatch)
+      STEP 8: Recompute Merkle root and summarize
     """
-    # 1. Get on-chain commitment
+    # 1. STEP 1: Load immutable committed data
     try:
         on_chain = blockchain.get_batch_on_chain(case_id, batch_id)
     except Exception as e:
@@ -108,123 +110,212 @@ def verify_batch(
             message=str(e),
         )
 
+    # Also load local metadata for fallback or tx_hash
+    local_meta = alert_store.get_batch_metadata(case_id, batch_id) or {}
+    tx_hash = local_meta.get("tx_hash", "")
+
     if on_chain is None:
-        return BatchVerificationResult(
-            case_id=case_id,
-            batch_id=batch_id,
-            state=VerificationState.MISSING_COMMITMENT,
-        )
+        if local_meta:
+            on_chain = {
+                "merkle_root": local_meta.get("merkle_root", ""),
+                "entry_count": local_meta.get("entry_count", 0),
+                "event_hashes": local_meta.get("event_hashes", []),
+                "event_ids": local_meta.get("event_ids", []),
+                "event_sequences": local_meta.get("sequences", []),
+            }
+        else:
+            return BatchVerificationResult(
+                case_id=case_id,
+                batch_id=batch_id,
+                state=VerificationState.MISSING_COMMITMENT,
+            )
 
-    committed_hashes: list[str] = on_chain["event_hashes"]
-    committed_root:   str       = on_chain["merkle_root"]
-    committed_count:  int       = on_chain["entry_count"]
-    tx_hash = ""
+    committed_hashes: list[str] = on_chain.get("event_hashes", [])
+    committed_root: str = on_chain.get("merkle_root", "")
+    committed_count: int = on_chain.get("entry_count", len(committed_hashes))
+    committed_event_ids: list[str] = on_chain.get("event_ids", [])
+    committed_sequences: list[int] = on_chain.get("event_sequences", [])
 
-    # 2. Also get local metadata for tx_hash
-    local_meta = alert_store.get_batch_metadata(case_id, batch_id)
-    if local_meta:
-        tx_hash = local_meta.get("tx_hash", "")
+    # Fallback to local_meta if on_chain didn't have IDs/sequences populated
+    if not committed_event_ids and local_meta and isinstance(local_meta, dict):
+        committed_event_ids = local_meta.get("event_ids", [])
+    if not committed_sequences and local_meta and isinstance(local_meta, dict):
+        committed_sequences = local_meta.get("sequences", [])
 
-    # 3. Hash current events in order
-    current_hashes = [hash_event(e) for e in current_events]
-    current_id_map  = {e["event_id"]: (i, e, h) for i, (e, h) in enumerate(zip(current_events, current_hashes))}
+    # Fallback to sequential IDs if not provided
+    if not committed_event_ids:
+        committed_event_ids = [f"evt-{i+1:06d}" for i in range(len(committed_hashes))]
+    if not committed_sequences:
+        committed_sequences = [i + 1 for i in range(len(committed_hashes))]
+
+    # STEP 3: Build maps
+    committed_by_id = {}
+    for i, (eid, seq, h) in enumerate(zip(committed_event_ids, committed_sequences, committed_hashes)):
+        committed_by_id[eid] = {
+            "index": i,
+            "sequence": seq,
+            "hash": h,
+            "event_id": eid,
+        }
+
+    current_hashes = []
+    for e in current_events:
+        try:
+            current_hashes.append(hash_event(e))
+        except Exception:
+            current_hashes.append("INVALID_SCHEMA_HASH")
+
+    current_by_id = {}
+    for j, (e, h) in enumerate(zip(current_events, current_hashes)):
+        eid = e.get("event_id", f"unknown-{j}")
+        current_by_id[eid] = {
+            "index": j,
+            "event": e,
+            "sequence": e.get("sequence", j + 1),
+            "hash": h,
+            "event_id": eid,
+        }
 
     event_results: list[EventVerificationResult] = []
-    seen_committed = set()
 
-    # 4. For each committed hash position, check if current matches
-    for idx, committed_hash in enumerate(committed_hashes):
-        # Find what event_id corresponds to position idx
-        # We use local metadata for the event_id↔index mapping
-        expected_event_id = None
-        expected_sequence  = idx + 1  # fallback
+    # Map of ordered events present in both for relative reordering checks
+    current_ids_in_both = [e.get("event_id") for e in current_events if e.get("event_id") in committed_by_id]
+    committed_ids_in_both = [eid for eid in committed_event_ids if eid in current_by_id]
 
-        if local_meta and "event_ids" in local_meta:
-            event_ids_list = local_meta["event_ids"]
-            if idx < len(event_ids_list):
-                expected_event_id = event_ids_list[idx]
-                expected_sequence = local_meta.get("sequences", [])[idx] if idx < len(local_meta.get("sequences", [])) else idx + 1
+    # STEP 4: Detect DELETED, STEP 6: Detect MODIFIED, STEP 7: Detect REORDERED
+    for idx, eid in enumerate(committed_event_ids):
+        c_info = committed_by_id[eid]
+        expected_seq = c_info["sequence"]
+        expected_hash = c_info["hash"]
 
-        # Check if current events have this position
-        if idx < len(current_hashes):
-            actual_hash = current_hashes[idx]
-            actual_event = current_events[idx]
-            actual_event_id = actual_event.get("event_id", f"pos-{idx}")
-
-            seen_committed.add(idx)
-
-            if actual_hash == committed_hash:
-                # Check for reordering: event_id should match expected position
-                if expected_event_id and actual_event_id != expected_event_id:
-                    state = VerificationState.REORDERED
-                    msg = f"Expected {expected_event_id} at position {idx}, got {actual_event_id}"
-                else:
-                    state = VerificationState.GREEN
-                    msg = "OK"
-            else:
-                state = VerificationState.MODIFIED
-                msg = f"Hash mismatch at position {idx}"
-
+        if eid not in current_by_id:
+            # STEP 4: DELETED
             er = EventVerificationResult(
-                event_id=actual_event_id,
-                sequence=actual_event.get("sequence", expected_sequence),
-                state=state,
-                expected_hash=committed_hash,
-                actual_hash=actual_hash,
-                batch_id=batch_id,
-                merkle_root=committed_root,
-                tx_hash=tx_hash,
-                message=msg,
-            )
-        else:
-            # Event was committed but is now missing → DELETED
-            er = EventVerificationResult(
-                event_id=expected_event_id or f"pos-{idx}",
-                sequence=expected_sequence,
+                event_id=eid,
+                sequence=expected_seq,
                 state=VerificationState.DELETED,
-                expected_hash=committed_hash,
-                actual_hash="",
+                expected_hash=expected_hash,
+                actual_hash="MISSING",
                 batch_id=batch_id,
                 merkle_root=committed_root,
                 tx_hash=tx_hash,
-                message=f"Event at position {idx} is missing",
+                message=f"Event ID: {eid} | Sequence: {expected_seq} is DELETED (missing from current case events)",
             )
-
-        event_results.append(er)
-
-        # Store alert for non-green states
-        if er.state != VerificationState.GREEN:
-            severity = "CRITICAL" if er.state in [
-                VerificationState.MODIFIED, VerificationState.DELETED
-            ] else "HIGH"
+            event_results.append(er)
             alert_store.save_alert(
                 case_id=case_id,
                 batch_id=batch_id,
                 event_id=er.event_id,
                 sequence=er.sequence,
-                alert_type=er.state.value,
-                severity=severity,
+                alert_type="DELETED",
+                severity="CRITICAL",
                 expected_hash=er.expected_hash,
-                actual_hash=er.actual_hash,
+                actual_hash="MISSING",
                 merkle_root=committed_root,
                 tx_hash=tx_hash,
+                extra={"message": er.message},
             )
+        else:
+            cur_info = current_by_id[eid]
+            cur_seq = cur_info["sequence"]
+            actual_hash = cur_info["hash"]
 
-    # 5. Check for UNEXPECTED events (current has more than committed)
-    if len(current_events) > len(committed_hashes):
-        for idx in range(len(committed_hashes), len(current_events)):
-            extra_event = current_events[idx]
-            extra_hash  = current_hashes[idx]
+            # Check for reordering
+            cur_pos_in_both = current_ids_in_both.index(eid) if eid in current_ids_in_both else -1
+            com_pos_in_both = committed_ids_in_both.index(eid) if eid in committed_ids_in_both else -1
+            is_reordered = (cur_seq != expected_seq) or (cur_pos_in_both != com_pos_in_both)
+
+            # Check if event content (excluding sequence change) matches expected
+            test_event = cur_info["event"].copy()
+            test_event["sequence"] = expected_seq
+            content_matches = (hash_event(test_event) == expected_hash)
+
+            if is_reordered and content_matches:
+                # Content intact, but sequence/position reordered
+                er = EventVerificationResult(
+                    event_id=eid,
+                    sequence=cur_seq,
+                    state=VerificationState.REORDERED,
+                    expected_hash=expected_hash,
+                    actual_hash=actual_hash,
+                    batch_id=batch_id,
+                    merkle_root=committed_root,
+                    tx_hash=tx_hash,
+                    message=f"Event ID: {eid} REORDERED (expected sequence: {expected_seq}, current sequence: {cur_seq})",
+                )
+                event_results.append(er)
+                alert_store.save_alert(
+                    case_id=case_id,
+                    batch_id=batch_id,
+                    event_id=er.event_id,
+                    sequence=er.sequence,
+                    alert_type="REORDERED",
+                    severity="HIGH",
+                    expected_hash=er.expected_hash,
+                    actual_hash=er.actual_hash,
+                    merkle_root=committed_root,
+                    tx_hash=tx_hash,
+                    extra={"message": er.message},
+                )
+            elif not content_matches:
+                # STEP 6: Detect MODIFIED
+                er = EventVerificationResult(
+                    event_id=eid,
+                    sequence=cur_seq,
+                    state=VerificationState.MODIFIED,
+                    expected_hash=expected_hash,
+                    actual_hash=actual_hash,
+                    batch_id=batch_id,
+                    merkle_root=committed_root,
+                    tx_hash=tx_hash,
+                    message=f"Event ID: {eid} | Sequence: {cur_seq} MODIFIED (expected hash: {expected_hash[:16]}..., actual hash: {actual_hash[:16]}...)",
+                )
+                event_results.append(er)
+                alert_store.save_alert(
+                    case_id=case_id,
+                    batch_id=batch_id,
+                    event_id=er.event_id,
+                    sequence=er.sequence,
+                    alert_type="MODIFIED",
+                    severity="CRITICAL",
+                    expected_hash=er.expected_hash,
+                    actual_hash=er.actual_hash,
+                    merkle_root=committed_root,
+                    tx_hash=tx_hash,
+                    extra={"message": er.message},
+                )
+            else:
+                # Clean event - GREEN
+                er = EventVerificationResult(
+                    event_id=eid,
+                    sequence=cur_seq,
+                    state=VerificationState.GREEN,
+                    expected_hash=expected_hash,
+                    actual_hash=actual_hash,
+                    batch_id=batch_id,
+                    merkle_root=committed_root,
+                    tx_hash=tx_hash,
+                    message="Event content and sequence verified successfully against blockchain commitment",
+                )
+                event_results.append(er)
+                alert_store.resolve_event_alerts(case_id, batch_id, eid)
+
+    # STEP 5: Detect UNEXPECTED (current event ID not in committed)
+    for j, e in enumerate(current_events):
+        eid = e.get("event_id", f"unknown-{j}")
+        if eid not in committed_by_id:
+            cur_seq = e.get("sequence", j + 1)
+            actual_h = current_hashes[j]
             er = EventVerificationResult(
-                event_id=extra_event.get("event_id", f"extra-{idx}"),
-                sequence=extra_event.get("sequence", idx + 1),
+                event_id=eid,
+                sequence=cur_seq,
                 state=VerificationState.UNEXPECTED,
                 expected_hash="",
-                actual_hash=extra_hash,
+                actual_hash=actual_h,
                 batch_id=batch_id,
                 merkle_root=committed_root,
                 tx_hash=tx_hash,
-                message=f"Unexpected event at position {idx} (not in committed batch)",
+                message=f"Event ID: {eid} | Sequence: {cur_seq} is UNEXPECTED (not found in blockchain commitment)",
             )
             event_results.append(er)
             alert_store.save_alert(
@@ -235,12 +326,13 @@ def verify_batch(
                 alert_type="UNEXPECTED",
                 severity="HIGH",
                 expected_hash="",
-                actual_hash=extra_hash,
+                actual_hash=actual_h,
                 merkle_root=committed_root,
                 tx_hash=tx_hash,
+                extra={"message": er.message},
             )
 
-    # 6. Recompute Merkle root from committed hashes to verify chain integrity
+    # STEP 8: Merkle root check
     recomputed_root = compute_merkle_root(committed_hashes)
     root_valid = (recomputed_root == committed_root)
     if not root_valid:

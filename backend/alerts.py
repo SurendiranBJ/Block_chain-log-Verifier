@@ -70,38 +70,77 @@ def save_alert(
     actual_hash:   str = "",
     merkle_root:   str = "",
     tx_hash:       str = "",
+    status:        str = "ACTIVE",
     extra: dict = None,
 ) -> Optional[str]:
     """
-    Save an alert document. Deduplicates by (case_id, batch_id, event_id, alert_type).
-    Returns inserted document ID or None if duplicate (no update on dup).
+    Save or update an alert document with lifecycle fields.
+    Deduplicates by (case_id, batch_id, event_id, alert_type).
     """
     db = _get_db()
-    doc = {
-        "case_id":       case_id,
-        "batch_id":      batch_id,
-        "event_id":      event_id,
-        "sequence":      sequence,
-        "alert_type":    alert_type,
-        "severity":      severity,
-        "expected_hash": expected_hash,
-        "actual_hash":   actual_hash,
-        "merkle_root":   merkle_root,
+    now_iso = datetime.now(timezone.utc).isoformat()
+    filter_query = {
+        "case_id":    case_id,
+        "batch_id":   batch_id,
+        "event_id":   event_id,
+        "alert_type": alert_type,
+    }
+    update_fields = {
+        "sequence":         sequence,
+        "severity":         severity,
+        "expected_hash":    expected_hash,
+        "actual_hash":      actual_hash,
+        "merkle_root":      merkle_root,
         "transaction_hash": tx_hash,
-        "timestamp":     datetime.now(timezone.utc).isoformat(),
+        "status":           status,
+        "last_seen":        now_iso,
     }
     if extra:
-        doc.update(extra)
+        update_fields.update(extra)
+
     try:
-        result = db.alerts.insert_one(doc)
-        logger.info(f"Alert saved: {alert_type} for {event_id}")
-        return str(result.inserted_id)
-    except DuplicateKeyError:
-        logger.debug(f"Duplicate alert skipped: {alert_type} {event_id}")
-        return None
+        res = db.alerts.update_one(
+            filter_query,
+            {
+                "$set": update_fields,
+                "$setOnInsert": {
+                    "first_detected": now_iso,
+                    "timestamp":      now_iso,
+                },
+            },
+            upsert=True
+        )
+        logger.info(f"Alert recorded: {alert_type} for {event_id} ({status})")
+        return str(res.upserted_id or "updated")
     except Exception as e:
         logger.error(f"save_alert error: {e}")
         return None
+
+
+def resolve_event_alerts(case_id: str, batch_id: str, event_id: str) -> int:
+    """Mark alerts for an event as RESOLVED when current verification is GREEN."""
+    try:
+        db = _get_db()
+        now_iso = datetime.now(timezone.utc).isoformat()
+        res = db.alerts.update_many(
+            {
+                "case_id":  case_id,
+                "batch_id": batch_id,
+                "event_id": event_id,
+                "status":   "ACTIVE",
+            },
+            {
+                "$set": {
+                    "status":      "RESOLVED",
+                    "resolved_at": now_iso,
+                    "last_seen":   now_iso,
+                }
+            }
+        )
+        return res.modified_count
+    except Exception as e:
+        logger.error(f"resolve_event_alerts error: {e}")
+        return 0
 
 
 def get_alerts(limit: int = 100, alert_type: str = None) -> list[dict]:
@@ -114,8 +153,18 @@ def get_alerts(limit: int = 100, alert_type: str = None) -> list[dict]:
     return list(cursor)
 
 
+def get_active_alerts(case_id: str = None, limit: int = 100) -> list[dict]:
+    """Get currently active alerts (status == ACTIVE)."""
+    db = _get_db()
+    query = {"status": "ACTIVE"}
+    if case_id:
+        query["case_id"] = case_id
+    cursor = db.alerts.find(query, {"_id": 0}).sort("last_seen", DESCENDING).limit(limit)
+    return list(cursor)
+
+
 def get_case_alerts(case_id: str, limit: int = 200) -> list[dict]:
-    """Get all alerts for a specific case."""
+    """Get all alerts for a specific case (both active and historical)."""
     db = _get_db()
     cursor = db.alerts.find(
         {"case_id": case_id}, {"_id": 0}

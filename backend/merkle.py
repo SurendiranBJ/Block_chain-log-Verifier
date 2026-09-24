@@ -65,11 +65,15 @@ def compute_merkle_root(leaf_hashes: list[str]) -> Optional[str]:
     return build_merkle_tree(leaf_hashes)["root"]
 
 
-def make_batch_id(case_id: str, sequence_start: int) -> str:
+def make_batch_id(case_id: str, sequence_start: int, run_id: Optional[str] = None) -> str:
     """
-    Generate a deterministic batch ID.
-    Format: batch-CASE-001-000001
+    Generate a readable, unique batch ID that is append-only compatible.
+    Format:
+        batch-{case_id}-{sequence_start:06d}
+        or: batch-{case_id}-{run_id}-{sequence_start:06d}
     """
+    if run_id:
+        return f"batch-{case_id}-{run_id}-{sequence_start:06d}"
     return f"batch-{case_id}-{sequence_start:06d}"
 
 

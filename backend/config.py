@@ -34,6 +34,34 @@ FLASK_PORT       = int(os.getenv("FLASK_PORT", "5000"))
 DEMO_CASE_ID     = os.getenv("DEMO_CASE_ID", "CASE-001")
 DEMO_EVENT_COUNT = int(os.getenv("DEMO_EVENT_COUNT", "100"))
 DEMO_LOG_DIR     = os.getenv("DEMO_LOG_DIR", str(_ROOT / "demo" / "sample_logs"))
+CURRENT_CASE_FILE = _ROOT / "demo" / "current_case.json"
+
+
+def get_current_case_id() -> str:
+    """Get active demo case ID from runtime file, falling back to DEMO_CASE_ID."""
+    if CURRENT_CASE_FILE.exists():
+        try:
+            import json
+            with open(CURRENT_CASE_FILE, "r") as f:
+                data = json.load(f)
+                case_id = data.get("case_id")
+                if case_id:
+                    return str(case_id)
+        except Exception:
+            pass
+    return os.getenv("DEMO_CASE_ID", DEMO_CASE_ID)
+
+
+def set_current_case_id(case_id: str) -> None:
+    """Save active demo case ID to runtime configuration file."""
+    import json
+    from datetime import datetime, timezone
+    CURRENT_CASE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with open(CURRENT_CASE_FILE, "w") as f:
+        json.dump({
+            "case_id": case_id,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }, f, indent=2)
 
 # ── ABI Paths ──────────────────────────────────────────────────────────────
 ABI_V3_PATH      = str(_ROOT / "backend" / "LogIntegrityV3_abi.json")
