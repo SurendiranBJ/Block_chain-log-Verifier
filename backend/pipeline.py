@@ -82,6 +82,26 @@ def ingest_events(events: list[dict]) -> dict:
     # Sort events by sequence to ensure deterministic ordering
     events_sorted = sorted(events, key=lambda e: e["sequence"])
 
+    MAX_BATCH_SIZE = 25
+    if len(events_sorted) > MAX_BATCH_SIZE:
+        chunks = [events_sorted[i:i + MAX_BATCH_SIZE] for i in range(0, len(events_sorted), MAX_BATCH_SIZE)]
+        last_result = None
+        all_hashes = []
+        for chunk in chunks:
+            last_result = ingest_events(chunk)
+            all_hashes.extend(last_result.get("event_hashes", []))
+        return {
+            "case_id":          case_id,
+            "batch_id":         last_result["batch_id"],
+            "entry_count":      len(events_sorted),
+            "merkle_root":      last_result["merkle_root"],
+            "transaction_hash": last_result["transaction_hash"],
+            "block_number":     last_result.get("block_number"),
+            "status":           "ANCHORED",
+            "verification":     "PASS",
+            "event_hashes":     all_hashes,
+        }
+
     # Step 2: Compute SHA-256 per event
     event_hashes = [hash_event(e) for e in events_sorted]
     event_ids    = [e["event_id"] for e in events_sorted]
@@ -139,10 +159,16 @@ def ingest_events(events: list[dict]) -> dict:
             batch_id=batch_id,
             current_events=events_sorted,
         )
-        verification_status = "PASS" if batch_result.state == verify_engine.VerificationState.GREEN else "FAIL"
+        if batch_result.state != verify_engine.VerificationState.GREEN:
+            raise PipelineError(
+                f"Post-anchor verification failed: {batch_result.state.value} ({batch_result.summary})"
+            )
+        verification_status = "PASS"
+    except PipelineError:
+        raise
     except Exception as e:
-        logger.warning(f"Post-anchor verification failed: {e}")
-        verification_status = "UNKNOWN"
+        logger.error(f"Post-anchor verification failed: {e}")
+        raise PipelineError(f"Post-anchor verification failed: {e}")
 
     return {
         "case_id":         case_id,

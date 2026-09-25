@@ -184,7 +184,6 @@ def main():
 
     # 10. Duplicate rejection test (PART 8)
     print(f"\n[10] Testing duplicate batch rejection...")
-    duplicate_rejected = False
     try:
         dup_tx = contract.functions.anchorBatch(
             "TEST-CASE",
@@ -196,26 +195,33 @@ def main():
             ["b" * 64],
         ).build_transaction({
             "chainId": CHAIN_ID,
-            "gas": 300000,
+            "gas": 500000,
             "gasPrice": w3.to_wei("1", "gwei"),
             "nonce": w3.eth.get_transaction_count(account),
         })
         signed_dup = w3.eth.account.sign_transaction(dup_tx, BLOCKCHAIN_PRIVATE_KEY)
         dup_tx_hash = w3.eth.send_raw_transaction(signed_dup.raw_transaction)
-        dup_receipt = w3.eth.wait_for_transaction_receipt(dup_tx_hash)
-        if dup_receipt["status"] == 0:
-            duplicate_rejected = True
-        else:
-            print("    [FAIL] Contract accepted duplicate batch (receipt status == 1)")
-            sys.exit(1)
-    except Exception:
-        # Reverted on simulation or node check
-        duplicate_rejected = True
+    except Exception as e:
+        print(f"    [FAIL] Transaction submission failed: {e}")
+        sys.exit(1)
 
-    if duplicate_rejected:
-        print("    [PASS] Duplicate transaction reverted as expected")
+    try:
+        dup_receipt = w3.eth.wait_for_transaction_receipt(dup_tx_hash, timeout=60)
+    except Exception as e:
+        print(f"    [FAIL] Receipt timed out or missing: {e}")
+        sys.exit(1)
+
+    if not dup_receipt:
+        print("    [FAIL] Transaction receipt is missing")
+        sys.exit(1)
+
+    if dup_receipt.get("status") == 1:
+        print("    [FAIL] Contract accepted duplicate batch (receipt status == 1)")
+        sys.exit(1)
+    elif dup_receipt.get("status") == 0:
+        print("    [PASS] Duplicate transaction mined with receipt status 0 (cryptographically rejected)")
     else:
-        print("    [FAIL] Contract accepted duplicate batch")
+        print(f"    [FAIL] Unknown receipt status: {dup_receipt.get('status')}")
         sys.exit(1)
 
     # 11. Append-only immutability test (PART 9)

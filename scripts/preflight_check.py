@@ -146,7 +146,7 @@ def main():
 
     from backend.config import (
         DEVICE1_RPC, DEVICE2_RPC, CHAIN_ID,
-        BLOCKCHAIN_PRIVATE_KEY, BLOCKCHAIN_ACCOUNT, CONTRACT_ADDRESS,
+        BLOCKCHAIN_PRIVATE_KEY, BLOCKCHAIN_ACCOUNT, DEVICE2_ACCOUNT, CONTRACT_ADDRESS,
         MONGODB_URI,
     )
 
@@ -156,6 +156,13 @@ def main():
     check("BLOCKCHAIN_ACCOUNT set",
           bool(BLOCKCHAIN_ACCOUNT and BLOCKCHAIN_ACCOUNT != "0xYOUR_ACCOUNT_ADDRESS_HERE"),
           "Set in .env")
+    if DEVICE2_ACCOUNT:
+        check(
+            "Distinct Validator Accounts",
+            BLOCKCHAIN_ACCOUNT.lower() != DEVICE2_ACCOUNT.lower(),
+            f"Device 1 ({BLOCKCHAIN_ACCOUNT[:10]}...) != Device 2 ({DEVICE2_ACCOUNT[:10]}...)",
+            level="critical",
+        )
     check("CONTRACT_ADDRESS set",
           bool(CONTRACT_ADDRESS),
           "Run deploy_contract.py first", level="warn")

@@ -10,6 +10,8 @@
 
 ## Core Principles
 
+- **THE BLOCKCHAIN AS COMMITMENT** — "The blockchain protects the cryptographic commitment/proof. It does not magically make the original cloud log immutable."
+- **MONGODB AS OPERATIONAL METADATA** — "MongoDB is operational metadata only and is not a trusted cryptographic source."
 - **TAMPER-EVIDENT** — not tamper-proof
 - **INDEPENDENT VERIFICATION** — separate integrity ledger
 - **CRYPTOGRAPHIC COMMITMENT** — SHA-256 + Merkle + blockchain

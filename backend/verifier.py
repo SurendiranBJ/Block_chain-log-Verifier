@@ -21,6 +21,7 @@ class VerificationState(str, Enum):
     DELETED            = "DELETED"
     UNEXPECTED         = "UNEXPECTED"
     REORDERED          = "REORDERED"
+    MERKLE_MISMATCH    = "MERKLE_MISMATCH"
     MISSING_COMMITMENT = "MISSING_COMMITMENT"
     BLOCKCHAIN_ERROR   = "BLOCKCHAIN_ERROR"
 
@@ -69,6 +70,7 @@ def _overall_state(event_results: list[EventVerificationResult]) -> Verification
     # Priority order
     for bad in [
         VerificationState.BLOCKCHAIN_ERROR,
+        VerificationState.MERKLE_MISMATCH,
         VerificationState.DELETED,
         VerificationState.UNEXPECTED,
         VerificationState.MODIFIED,
@@ -128,11 +130,28 @@ def verify_batch(
     committed_event_ids: list[str] = on_chain.get("event_ids", [])
     committed_sequences: list[int] = on_chain.get("event_sequences", [])
 
-    # If V3 contract didn't store IDs/sequences, generate canonical sequential defaults
-    if not committed_event_ids:
-        committed_event_ids = [f"evt-{i+1:06d}" for i in range(len(committed_hashes))]
-    if not committed_sequences:
-        committed_sequences = [i + 1 for i in range(len(committed_hashes))]
+    # Strict check: LogIntegrityV3 requires event IDs, sequences, hashes, and Merkle root on-chain
+    if not committed_hashes or not committed_root or not committed_event_ids or not committed_sequences:
+        logger.error(f"Batch {batch_id} on-chain commitment is missing required fields (ids={len(committed_event_ids)}, seqs={len(committed_sequences)}, hashes={len(committed_hashes)}, root={bool(committed_root)})")
+        return BatchVerificationResult(
+            case_id=case_id,
+            batch_id=batch_id,
+            state=VerificationState.BLOCKCHAIN_ERROR,
+            merkle_root=committed_root,
+            entry_count=committed_count,
+            message=f"On-chain batch {batch_id} commitment is malformed or missing V3 identity fields",
+        )
+
+    if not (len(committed_event_ids) == len(committed_sequences) == len(committed_hashes)):
+        logger.error(f"Batch {batch_id} on-chain commitment field count mismatch")
+        return BatchVerificationResult(
+            case_id=case_id,
+            batch_id=batch_id,
+            state=VerificationState.BLOCKCHAIN_ERROR,
+            merkle_root=committed_root,
+            entry_count=committed_count,
+            message=f"On-chain batch {batch_id} commitment field count mismatch",
+        )
 
     # STEP 3: Build maps
     committed_by_id = {}
@@ -320,11 +339,14 @@ def verify_batch(
 
     # STEP 8: Merkle root check
     recomputed_root = compute_merkle_root(committed_hashes)
-    root_valid = (recomputed_root == committed_root)
+    root_valid = bool(committed_root and recomputed_root.lower() == committed_root.lower())
     if not root_valid:
-        logger.error(f"Merkle root mismatch for batch {batch_id}!")
+        logger.error(f"Merkle root mismatch for batch {batch_id}! Committed: {committed_root}, Recomputed: {recomputed_root}")
 
     overall = _overall_state(event_results)
+    if not root_valid:
+        # Merkle failure must NEVER be GREEN
+        overall = VerificationState.MERKLE_MISMATCH
 
     summary = {
         "total":      len(event_results),
@@ -374,6 +396,25 @@ def verify_case(
             overall_state=VerificationState.MISSING_COMMITMENT,
             summary={"error": f"No batches found on blockchain for case {case_id}"},
         )
+
+    # If a list of events was passed, automatically partition by on-chain batch commitments
+    if isinstance(current_events_by_batch, list):
+        raw_events = current_events_by_batch
+        current_events_by_batch = {}
+        for b_id in batch_ids:
+            try:
+                on_chain = blockchain.get_batch_on_chain(case_id, b_id)
+            except Exception:
+                on_chain = None
+            if on_chain:
+                committed_ids = set(on_chain.get("event_ids", []))
+                committed_seqs = set(on_chain.get("event_sequences", []))
+                current_events_by_batch[b_id] = [
+                    e for e in raw_events
+                    if e.get("event_id") in committed_ids or e.get("sequence") in committed_seqs
+                ]
+            else:
+                current_events_by_batch[b_id] = []
 
     batch_results = []
     for batch_id in batch_ids:

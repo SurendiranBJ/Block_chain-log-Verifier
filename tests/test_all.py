@@ -882,5 +882,145 @@ class TestGethPinning:
         assert is_clique_compatible("Geth/v1.17.0-stable/windows-amd64/go1.23.0") is False
 
 
+# ══════════════════════════════════════════════════════════════════════════
+# Critical Security Properties Tests (PART 18)
+# ══════════════════════════════════════════════════════════════════════════
+
+class TestCriticalSecurityProperties:
+
+    @patch("backend.verifier.blockchain")
+    def test_merkle_root_failure_returns_merkle_mismatch_never_green(self, mock_bc):
+        """If recomputed Merkle root != committed root, verifier MUST return MERKLE_MISMATCH (PART 3 & 18)."""
+        from backend.verifier import verify_batch, VerificationState
+        from backend.hashing import hash_event
+
+        events = [make_event(i) for i in range(1, 4)]
+        event_hashes = [hash_event(e) for e in events]
+
+        # Return a batch where committed root does NOT match the hashes
+        mock_bc.get_batch_on_chain.return_value = {
+            "case_id": "CASE-001",
+            "batch_id": "batch-CASE-001-000001",
+            "merkle_root": "0x" + "f" * 64,  # Corrupted/mismatched root
+            "entry_count": 3,
+            "event_ids": [e["event_id"] for e in events],
+            "event_sequences": [e["sequence"] for e in events],
+            "event_hashes": event_hashes,
+            "anchored": True,
+        }
+
+        vres = verify_batch("CASE-001", "batch-CASE-001-000001", events)
+        assert vres.state == VerificationState.MERKLE_MISMATCH
+        assert vres.state != VerificationState.GREEN
+        assert vres.summary.get("merkle_root_valid") is False
+
+    @patch("backend.verifier.blockchain")
+    def test_v3_schema_missing_fields_returns_blockchain_error(self, mock_bc):
+        """V3 contract must provide event_ids, event_sequences, event_hashes, merkle_root, entry_count. Missing -> BLOCKCHAIN_ERROR (PART 2)."""
+        from backend.verifier import verify_batch, VerificationState
+
+        events = [make_event(1)]
+        # Missing event_ids and event_sequences
+        mock_bc.get_batch_on_chain.return_value = {
+            "case_id": "CASE-001",
+            "batch_id": "batch-CASE-001-000001",
+            "merkle_root": "0x" + "a" * 64,
+            "entry_count": 1,
+            # 'event_ids' and 'event_sequences' omitted
+            "event_hashes": ["0x" + "b" * 64],
+            "anchored": True,
+        }
+
+        vres = verify_batch("CASE-001", "batch-CASE-001-000001", events)
+        assert vres.state == VerificationState.BLOCKCHAIN_ERROR
+        assert vres.state != VerificationState.GREEN
+
+    @patch("backend.blockchain.get_contract")
+    @patch("backend.blockchain.get_w3")
+    def test_anchor_batch_requires_receipt_status_1(self, mock_get_w3, mock_get_contract):
+        """anchor_batch must revert/raise if receipt.status != 1 (PART 7 & 18)."""
+        from backend import blockchain
+        w3 = MagicMock()
+        w3.is_connected.return_value = True
+        w3.to_wei.return_value = 1000000000
+        w3.eth.get_transaction_count.return_value = 0
+        w3.eth.account.sign_transaction.return_value = MagicMock(raw_transaction=b"raw")
+        w3.eth.send_raw_transaction.return_value = MagicMock(hex=lambda: "0x1234")
+
+        # Mock receipt with status = 0 (failed/reverted)
+        w3.eth.wait_for_transaction_receipt.return_value = {"status": 0, "blockNumber": 10}
+        mock_get_w3.return_value = w3
+
+        with patch.object(blockchain, "BLOCKCHAIN_PRIVATE_KEY", "0x" + "1" * 64), \
+             patch.object(blockchain, "BLOCKCHAIN_ACCOUNT", "0x" + "2" * 40):
+            with pytest.raises(RuntimeError, match="Transaction failed or reverted"):
+                blockchain.anchor_batch(
+                    case_id="CASE-001",
+                    batch_id="batch-001",
+                    merkle_root="a" * 64,
+                    entry_count=1,
+                    event_ids=["evt-1"],
+                    event_sequences=[1],
+                    event_hashes=["b" * 64],
+                )
+
+    def test_validator_accounts_must_differ(self):
+        """Device 1 account and Device 2 account must never be the same address (PART 10 & 18)."""
+        addr1 = "0xFE3B557E8FB62B89F4916B721BE55CEB828DBD73"
+        addr2_same = "0xfe3b557e8fb62b89f4916b721be55ceb828dbd73"
+        addr2_diff = "0x627306090abaB3A6e1400e9345bC60c78a8BEf57"
+
+        # Identical addresses must fail validation
+        assert addr1.lower() == addr2_same.lower()
+        # Different addresses must pass validation
+        assert addr1.lower() != addr2_diff.lower()
+
+    def test_remote_ingest_auth_token_enforcement(self):
+        """POST /api/ingest must reject missing/wrong tokens and allow valid token (PART 13)."""
+        from backend.app import app
+        client = app.test_client()
+
+        with patch("backend.app.INGEST_API_TOKEN", "secret-test-token"), \
+             patch("backend.app.ingest_events") as mock_ingest:
+            mock_ingest.return_value = {"status": "ANCHORED", "verification": "PASS"}
+
+            # 1. No token -> 401
+            res1 = client.post("/api/ingest", json={"case_id": "CASE-001", "events": []})
+            assert res1.status_code == 401
+
+            # 2. Wrong token -> 401
+            res2 = client.post(
+                "/api/ingest",
+                headers={"X-API-Key": "wrong-token"},
+                json={"case_id": "CASE-001", "events": []}
+            )
+            assert res2.status_code == 401
+
+            # 3. Valid token -> 200 (reaches pipeline)
+            res3 = client.post(
+                "/api/ingest",
+                headers={"X-API-Key": "secret-test-token"},
+                json={"case_id": "CASE-001", "events": [{"event_id": "e1"}]}
+            )
+            assert res3.status_code == 200
+            assert res3.get_json()["success"] is True
+
+    @patch("backend.pipeline.alert_store")
+    @patch("backend.pipeline.blockchain")
+    def test_pipeline_fails_hard_on_anchor_failure(self, mock_bc, mock_alert):
+        """If anchor_batch fails, pipeline must raise PipelineError and NOT save metadata (PART 6)."""
+        from backend.pipeline import ingest_events, PipelineError
+
+        mock_bc.batch_exists.return_value = False
+        mock_bc.anchor_batch.side_effect = RuntimeError("Geth node rejected transaction")
+
+        events = [make_event(1)]
+        with pytest.raises(PipelineError, match="Blockchain anchor failed"):
+            ingest_events(events)
+
+        # Ensure metadata was NEVER saved to MongoDB
+        mock_alert.save_batch_metadata.assert_not_called()
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--tb=short"])

@@ -125,6 +125,22 @@ def anchor_batch(
     account  = Web3.to_checksum_address(BLOCKCHAIN_ACCOUNT)
     nonce    = w3.eth.get_transaction_count(account)
 
+    # Dynamic gas estimation with 25% safety margin (capped at 7.5M for 8M block limit)
+    try:
+        estimated = contract.functions.anchorBatch(
+            case_id,
+            batch_id,
+            merkle_root,
+            entry_count,
+            event_ids,
+            event_sequences,
+            event_hashes,
+        ).estimate_gas({"from": account})
+        gas = min(int(estimated * 1.25), 7500000)
+    except Exception as e:
+        logger.debug(f"Gas estimation failed, using fallback: {e}")
+        gas = 4500000
+
     tx = contract.functions.anchorBatch(
         case_id,
         batch_id,

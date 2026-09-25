@@ -1,6 +1,10 @@
 # LogChain — Zero-Trust Cross-Cloud Log Integrity & Tamper Detection System
 
 > "Cloud providers own the logs. Our system owns the proof of what those logs originally contained."
+> 
+> "The blockchain protects the cryptographic commitment/proof. It does not magically make the original cloud log immutable."
+> 
+> "MongoDB is operational metadata only and is not a trusted cryptographic source."
 
 A **tamper-evident**, **blockchain-anchored** log integrity system for cloud forensics. Built for hackathon demonstration with a clean local-first core and pluggable cloud adapters.
 

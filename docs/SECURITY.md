@@ -1,5 +1,9 @@
 # LogChain Security Notes
 
+> "The blockchain protects the cryptographic commitment/proof. It does not magically make the original cloud log immutable."
+> 
+> "MongoDB is operational metadata only and is not a trusted cryptographic source."
+
 ## Credentials
 
 ### Compromised Keys (Legacy Repository)

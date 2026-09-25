@@ -85,9 +85,9 @@ def reset_demo(count: int = 100) -> str:
 
     # Stage 7: Verify current events against blockchain
     print("\n[7] Verifying current events against blockchain...")
-    vres = ve.verify_batch(new_case_id, batch_id, events)
-    if vres.state != ve.VerificationState.GREEN:
-        print(f"    [FAIL] Verification: Expected GREEN but got {vres.state.value}")
+    cres = ve.verify_case(new_case_id, events)
+    if cres.overall_state != ve.VerificationState.GREEN:
+        print(f"    [FAIL] Verification: Expected GREEN but got {cres.overall_state.value}")
         sys.exit(1)
     print(f"    [PASS] Verification: All {len(events)} events match blockchain commitment (GREEN)")
 

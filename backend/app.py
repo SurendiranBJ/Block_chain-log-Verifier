@@ -122,9 +122,15 @@ def api_status():
                 batch_states = []
 
                 for batch_id in onchain_batch_ids:
-                    local_meta = alert_store.get_batch_metadata(case_id, batch_id) or {}
-                    seq_list = local_meta.get("sequences", [])
-                    batch_events = [e for e in events if e.get("sequence") in seq_list] if seq_list else events
+                    on_chain_b = blockchain.get_batch_on_chain(case_id, batch_id)
+                    if on_chain_b:
+                        committed_ids = set(on_chain_b.get("event_ids", []))
+                        committed_seqs = set(on_chain_b.get("event_sequences", []))
+                        batch_events = [e for e in events if e.get("event_id") in committed_ids or e.get("sequence") in committed_seqs]
+                        if not batch_events and events:
+                            batch_events = events
+                    else:
+                        batch_events = events
 
                     res = verify_engine.verify_batch(case_id, batch_id, batch_events)
                     batch_states.append(res.state)
@@ -145,6 +151,8 @@ def api_status():
                         elif er_val == "REORDERED":
                             stats["reordered"] += 1
                             active_violations.append(_er_to_dict(er))
+                        elif er_val == "MERKLE_MISMATCH":
+                            active_violations.append(_er_to_dict(er))
 
                 # Derive current integrity state
                 if any(s == verify_engine.VerificationState.BLOCKCHAIN_ERROR for s in batch_states):
@@ -157,7 +165,8 @@ def api_status():
                     verify_engine.VerificationState.MODIFIED,
                     verify_engine.VerificationState.DELETED,
                     verify_engine.VerificationState.UNEXPECTED,
-                    verify_engine.VerificationState.REORDERED
+                    verify_engine.VerificationState.REORDERED,
+                    verify_engine.VerificationState.MERKLE_MISMATCH,
                 ) for s in batch_states):
                     integrity = "RED"
                     status_reason = "Integrity Violation: Tampering detected against immutable blockchain commitment."
@@ -300,9 +309,15 @@ def api_verify():
 
     results_by_batch = []
     for batch_id in onchain_batch_ids:
-        local_meta = alert_store.get_batch_metadata(case_id, batch_id) or {}
-        seq_list = local_meta.get("sequences", [])
-        batch_events = [e for e in events if e.get("sequence") in seq_list] if seq_list else events
+        on_chain_b = blockchain.get_batch_on_chain(case_id, batch_id)
+        if on_chain_b:
+            committed_ids = set(on_chain_b.get("event_ids", []))
+            committed_seqs = set(on_chain_b.get("event_sequences", []))
+            batch_events = [e for e in events if e.get("event_id") in committed_ids or e.get("sequence") in committed_seqs]
+            if not batch_events and events:
+                batch_events = events
+        else:
+            batch_events = events
 
         result = verify_engine.verify_batch(case_id, batch_id, batch_events)
         results_by_batch.append({
@@ -330,9 +345,9 @@ def api_verify():
         overall = "BLOCKCHAIN_ERROR"
     elif any(s == "MISSING_COMMITMENT" for s in all_states):
         overall = "MISSING_COMMITMENT"
-    elif any(s in ("MODIFIED", "DELETED", "UNEXPECTED", "REORDERED") for s in all_states):
+    elif any(s in ("MODIFIED", "DELETED", "UNEXPECTED", "REORDERED", "MERKLE_MISMATCH") for s in all_states):
         overall = "RED"
-    elif all(s == "GREEN" for s in all_states):
+    elif all(s == "GREEN" for s in all_states) and all_states:
         overall = "GREEN"
     else:
         overall = all_states[0] if all_states else "NO_DATA"

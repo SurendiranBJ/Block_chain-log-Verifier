@@ -36,6 +36,7 @@ from backend.config import (
     FLASK_PORT,
     INGEST_API_TOKEN,
     BLOCKCHAIN_ACCOUNT,
+    DEVICE2_ACCOUNT,
 )
 
 results = []
@@ -166,6 +167,14 @@ def main():
             check("Device 2 RPC", False, f"{DEVICE2_RPC} offline or on separate LAN laptop", level="blocked")
     except Exception as exc:
         check("Device 2 RPC", False, str(exc), level="blocked")
+
+    if DEVICE2_ACCOUNT and BLOCKCHAIN_ACCOUNT:
+        check(
+            "Distinct Validator Accounts",
+            BLOCKCHAIN_ACCOUNT.lower() != DEVICE2_ACCOUNT.lower(),
+            f"Device 1 ({BLOCKCHAIN_ACCOUNT[:10]}...) != Device 2 ({DEVICE2_ACCOUNT[:10]}...)",
+            level="critical",
+        )
 
     # 6. Smart Contract Deployment & State
     section("Smart Contract (LogIntegrityV3)")

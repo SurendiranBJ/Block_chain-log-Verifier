@@ -3,6 +3,7 @@ LogChain - Live Geth Integration Tests
 Tests real blockchain interaction against a local private Geth testnet.
 Gracefully skips/blocks when Geth or Device 2 is unavailable.
 """
+import uuid
 import pytest
 from web3 import Web3
 
@@ -50,7 +51,7 @@ class TestGethIntegration:
 
     def test_anchor_and_retrieve_batch(self):
         """3, 4, 5, 6: Anchor real batch with event IDs and sequences, then retrieve and verify."""
-        case_id = "CASE-INTEG-001"
+        case_id = f"CASE-INTEG-{uuid.uuid4().hex[:6]}"
         events = generate_events(case_id=case_id, count=10)
         event_hashes = [hash_event(e) for e in events]
         event_ids = [e["event_id"] for e in events]
@@ -85,7 +86,7 @@ class TestGethIntegration:
 
     def test_modify_event_detected(self):
         """7 & 8: Tamper content -> detect MODIFIED."""
-        case_id = "CASE-INTEG-002"
+        case_id = f"CASE-INTEG-MOD-{uuid.uuid4().hex[:6]}"
         events = generate_events(case_id=case_id, count=10)
         event_hashes = [hash_event(e) for e in events]
         event_ids = [e["event_id"] for e in events]
@@ -113,7 +114,7 @@ class TestGethIntegration:
 
     def test_delete_middle_event_detected(self):
         """9 & 10: Delete middle event -> detect DELETED exactly (no cascading false modified alerts)."""
-        case_id = "CASE-INTEG-003"
+        case_id = f"CASE-INTEG-DEL-{uuid.uuid4().hex[:6]}"
         events = generate_events(case_id=case_id, count=10)
         event_hashes = [hash_event(e) for e in events]
         event_ids = [e["event_id"] for e in events]
@@ -140,7 +141,7 @@ class TestGethIntegration:
 
     def test_reorder_events_detected(self):
         """11 & 12: Swap events -> detect REORDERED."""
-        case_id = "CASE-INTEG-004"
+        case_id = f"CASE-INTEG-REO-{uuid.uuid4().hex[:6]}"
         events = generate_events(case_id=case_id, count=10)
         event_hashes = [hash_event(e) for e in events]
         event_ids = [e["event_id"] for e in events]
@@ -170,7 +171,7 @@ class TestGethIntegration:
 
     def test_insert_event_detected(self):
         """13 & 14: Insert unexpected uncommitted event -> detect UNEXPECTED."""
-        case_id = "CASE-INTEG-005"
+        case_id = f"CASE-INTEG-INS-{uuid.uuid4().hex[:6]}"
         events = generate_events(case_id=case_id, count=10)
         event_hashes = [hash_event(e) for e in events]
         event_ids = [e["event_id"] for e in events]

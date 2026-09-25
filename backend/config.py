@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 # Load .env from project root
 _ROOT = Path(__file__).parent.parent
-load_dotenv(_ROOT / ".env")
+load_dotenv(_ROOT / ".env", override=True)
 
 # ── Blockchain ─────────────────────────────────────────────────────────────
 DEVICE1_IP       = os.getenv("DEVICE1_IP", "127.0.0.1")
@@ -22,6 +22,7 @@ BLOCKCHAIN_ACCOUNT     = os.getenv("BLOCKCHAIN_ACCOUNT", "")
 BLOCKCHAIN_PASSWORD    = os.getenv("BLOCKCHAIN_PASSWORD", "")
 DEVICE2_ACCOUNT        = os.getenv("DEVICE2_ACCOUNT", "")
 DEVICE2_PASSWORD       = os.getenv("DEVICE2_PASSWORD", "")
+DEVICE2_PRIVATE_KEY    = os.getenv("DEVICE2_PRIVATE_KEY", "")
 CONTRACT_ADDRESS       = os.getenv("CONTRACT_ADDRESS", "")
 
 # ── MongoDB ────────────────────────────────────────────────────────────────
