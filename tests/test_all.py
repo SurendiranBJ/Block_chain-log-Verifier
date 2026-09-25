@@ -843,5 +843,44 @@ class TestDemoGenerator:
             assert len(h) == 64
 
 
+# ══════════════════════════════════════════════════════════════════════════
+# Geth Pinning & Clique Compatibility Tests
+# ══════════════════════════════════════════════════════════════════════════
+
+class TestGethPinning:
+
+    def test_download_urls_defined(self):
+        """All supported OS/architectures have valid pinned URLs."""
+        from scripts.download_geth import DOWNLOAD_URLS, GETH_VERSION
+        assert ("windows", "amd64") in DOWNLOAD_URLS
+        assert ("linux", "amd64") in DOWNLOAD_URLS
+        assert ("darwin", "amd64") in DOWNLOAD_URLS
+        assert ("darwin", "arm64") in DOWNLOAD_URLS
+        for (sys_name, arch), url in DOWNLOAD_URLS.items():
+            assert GETH_VERSION in url
+            assert url.startswith("https://gethstore.blob.core.windows.net/builds/")
+
+    def test_clique_compatibility_logic(self):
+        """Versions >= 1.14 must be flagged as incompatible with Clique PoA."""
+        import re
+
+        def is_clique_compatible(version_text):
+            m = re.search(r"(?:Version:\s*|geth[^\n0-9]*\bv?)([0-9]+)\.([0-9]+)\.([0-9]+)", version_text, re.IGNORECASE)
+            if not m:
+                return None
+            major, minor = int(m.group(1)), int(m.group(2))
+            return not ((major > 1) or (major == 1 and minor >= 14))
+
+        # Compatible pre-v1.14 builds:
+        assert is_clique_compatible("Geth/v1.13.15-stable/windows-amd64/go1.21.6") is True
+        assert is_clique_compatible("Version: 1.13.14-stable") is True
+        assert is_clique_compatible("Version: 1.12.0-stable") is True
+
+        # Incompatible post-v1.14 builds (Clique removed):
+        assert is_clique_compatible("Geth/v1.14.0-stable/linux-amd64/go1.22.0") is False
+        assert is_clique_compatible("Version: 1.15.2-unstable") is False
+        assert is_clique_compatible("Geth/v1.17.0-stable/windows-amd64/go1.23.0") is False
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--tb=short"])

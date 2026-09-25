@@ -19,7 +19,7 @@ sys.path.insert(0, str(_PROJECT_ROOT))
 from backend.config import (
     FLASK_SECRET_KEY, FLASK_DEBUG, FLASK_PORT,
     CONTRACT_ADDRESS, get_current_case_id, set_current_case_id,
-    DEVICE1_RPC,
+    DEVICE1_RPC, INGEST_API_TOKEN,
 )
 from backend import blockchain, alerts as alert_store
 from backend.pipeline import ingest_events, PipelineError
@@ -220,10 +220,20 @@ def api_alerts():
 def api_ingest():
     """
     POST /api/ingest
+    Header: X-API-Key: <INGEST_API_TOKEN>
     Body: {"case_id": "...", "events": [...]}
     Cloud adapter integration boundary.
     Validates schema, canonicalizes, SHA-256 hashes, Merkle batches, anchors, verifies.
     """
+    # ── Authentication Check ──────────────────────────────────────
+    if INGEST_API_TOKEN:
+        auth_token = request.headers.get("X-API-Key") or request.headers.get("Authorization", "").replace("Bearer ", "").strip()
+        if not auth_token or auth_token != INGEST_API_TOKEN:
+            return jsonify({
+                "success": False,
+                "error": "Unauthorized: Missing or invalid X-API-Key header",
+            }), 401
+
     data = request.get_json(force=True, silent=True)
     if not data:
         return jsonify({"success": False, "error": "Invalid JSON body"}), 400

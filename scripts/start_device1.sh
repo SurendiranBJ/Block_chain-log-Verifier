@@ -21,9 +21,25 @@ echo "============================================================"
 echo " LogChain - Starting Device 1 (Primary Validator Node)"
 echo "============================================================"
 
-# Check geth installed
-if ! command -v geth &> /dev/null; then
-    echo "[ERROR] geth not found. Install: https://geth.ethereum.org/downloads"
+# Locate compatible Geth binary (prioritizes pinned ./bin/geth)
+GETH_BIN=""
+if [ -x "$ROOT_DIR/bin/geth" ]; then
+    GETH_BIN="$ROOT_DIR/bin/geth"
+elif [ -f "$ROOT_DIR/bin/geth.exe" ]; then
+    GETH_BIN="$ROOT_DIR/bin/geth.exe"
+elif command -v geth &> /dev/null; then
+    GETH_BIN="$(command -v geth)"
+else
+    echo "[ERROR] geth not found. Run: python scripts/download_geth.py"
+    exit 1
+fi
+
+# Check version compatibility: Clique PoA requires Geth < 1.14
+GETH_VER_STR="$("$GETH_BIN" version 2>&1 | grep -i "Version:" || "$GETH_BIN" version 2>&1 | head -n 1)"
+echo "[*] Using Geth: $GETH_BIN ($GETH_VER_STR)"
+if echo "$GETH_VER_STR" | grep -qE "Version:\s*1\.(1[4-9]|[2-9][0-9])"; then
+    echo "[FAIL] Detected Geth >= 1.14. Clique PoA block sealing is not supported in Geth v1.14+."
+    echo "       Run: python scripts/download_geth.py to install compatible pinned Geth v1.13.15 into ./bin/"
     exit 1
 fi
 
@@ -52,13 +68,13 @@ fi
 # 3. Genesis initialization
 if [ ! -d "$DATA_DIR/geth" ]; then
     echo "[*] Initializing genesis block..."
-    geth --datadir "$DATA_DIR" init "$ROOT_DIR/genesis.json"
+    "$GETH_BIN" --datadir "$DATA_DIR" init "$ROOT_DIR/genesis.json"
 fi
 echo "[PASS] Genesis initialized"
 
 # 4. Start Geth (Restricted HTTP API: eth,net,web3 for security)
 echo "[*] Starting Geth validator node..."
-geth \
+"$GETH_BIN" \
     --datadir "$DATA_DIR" \
     --networkid "$CHAIN_ID" \
     --port "$P2P_PORT" \

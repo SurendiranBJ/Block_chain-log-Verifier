@@ -19,6 +19,9 @@ CHAIN_ID         = int(os.getenv("CHAIN_ID", "12345"))
 
 BLOCKCHAIN_PRIVATE_KEY = os.getenv("BLOCKCHAIN_PRIVATE_KEY", "")
 BLOCKCHAIN_ACCOUNT     = os.getenv("BLOCKCHAIN_ACCOUNT", "")
+BLOCKCHAIN_PASSWORD    = os.getenv("BLOCKCHAIN_PASSWORD", "")
+DEVICE2_ACCOUNT        = os.getenv("DEVICE2_ACCOUNT", "")
+DEVICE2_PASSWORD       = os.getenv("DEVICE2_PASSWORD", "")
 CONTRACT_ADDRESS       = os.getenv("CONTRACT_ADDRESS", "")
 
 # ── MongoDB ────────────────────────────────────────────────────────────────
@@ -29,6 +32,7 @@ MONGODB_DB_NAME = os.getenv("MONGODB_DB_NAME", "logchain_db")
 FLASK_SECRET_KEY = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-in-production")
 FLASK_DEBUG      = os.getenv("FLASK_DEBUG", "false").lower() == "true"
 FLASK_PORT       = int(os.getenv("FLASK_PORT", "5000"))
+INGEST_API_TOKEN = os.getenv("INGEST_API_TOKEN", "lc-dev-token-change-in-production")
 
 # ── Demo ───────────────────────────────────────────────────────────────────
 DEMO_CASE_ID     = os.getenv("DEMO_CASE_ID", "CASE-001")

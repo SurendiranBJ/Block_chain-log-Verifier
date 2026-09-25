@@ -12,6 +12,7 @@ jwtsecret
 jwt.secret
 
 # --- Blockchain Data ---
+bin/
 keystore/
 node1/
 node2/

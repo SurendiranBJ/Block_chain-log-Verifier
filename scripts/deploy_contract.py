@@ -23,6 +23,7 @@ from backend.config import (
 
 try:
     from web3 import Web3
+    import solcx
     from solcx import compile_source, install_solc
 except ImportError:
     print("[ERROR] Missing dependencies. Run: pip install web3 py-solc-x")

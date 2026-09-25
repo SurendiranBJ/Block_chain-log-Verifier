@@ -4,8 +4,11 @@
 
 ```bash
 pip install -r requirements.txt
-# Install geth: https://geth.ethereum.org/downloads
 # Install MongoDB: https://www.mongodb.com/try/download/community
+
+# IMPORTANT: Geth >= 1.14 removed Clique PoA block sealing.
+# Download pinned Geth v1.13.15 into ./bin/ (automatic for Windows/Linux/macOS):
+python scripts/download_geth.py
 ```
 
 ---
@@ -25,13 +28,24 @@ python scripts/setup_private_chain.py
 ### Step 1: Start Device 1 (Primary Validator)
 
 ```bash
+# On Linux / macOS / Bash:
 ./scripts/start_device1.sh
+
+# Or cross-platform / Windows:
+python scripts/start_nodes.py --node 1
 ```
 
 ### Step 2: Start Device 2 (Independent Validator)
 
 ```bash
+# On Linux / macOS / Bash:
 ./scripts/start_device2.sh
+
+# Or cross-platform / Windows:
+python scripts/start_nodes.py --node 2
+
+# (To run both simultaneously on one test machine):
+# python scripts/start_nodes.py --all
 ```
 
 ### Step 3: Connect Peers

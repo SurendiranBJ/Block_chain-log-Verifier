@@ -81,6 +81,57 @@ def main():
     check("dotenv",      try_import("dotenv","dotenv"), "pip install python-dotenv")
     check("pytest",      try_import("pytest"),      "pip install pytest", level="warn")
 
+    # ── Geth Binary & PoA Compatibility ────────────────────────
+    section("Geth Engine & Consensus Compatibility")
+    import shutil
+    import subprocess
+    import re
+
+    root = Path(__file__).parent.parent
+    local_bin = root / "bin" / ("geth.exe" if sys.platform == "win32" else "geth")
+
+    candidate_paths = []
+    if local_bin.exists():
+        candidate_paths.append((str(local_bin), "local ./bin"))
+    sys_geth = shutil.which("geth")
+    if sys_geth and (not candidate_paths or sys_geth != candidate_paths[0][0]):
+        candidate_paths.append((sys_geth, "system PATH"))
+
+    if not candidate_paths:
+        check(
+            "Geth installed",
+            False,
+            "Geth not found in ./bin or PATH. Run: python scripts/download_geth.py",
+            level="critical",
+        )
+    else:
+        active_bin, bin_origin = candidate_paths[0]
+        try:
+            res = subprocess.run([active_bin, "version"], capture_output=True, text=True, timeout=10)
+            out = res.stdout + res.stderr
+            m = re.search(r"(?:Version:\s*|geth[^\n0-9]*\bv?)([0-9]+)\.([0-9]+)\.([0-9]+)", out, re.IGNORECASE)
+
+            if m:
+                major, minor, patch = int(m.group(1)), int(m.group(2)), int(m.group(3))
+                ver_str = f"v{major}.{minor}.{patch}"
+                if (major > 1) or (major == 1 and minor >= 14):
+                    check(
+                        "Geth Clique PoA Support",
+                        False,
+                        f"Detected {ver_str} at {active_bin} ({bin_origin}). Geth >= 1.14 removed Clique PoA block sealing! Pinned Geth v1.13.x is required. Run: python scripts/download_geth.py to install compatible binary into ./bin/",
+                        level="critical",
+                    )
+                else:
+                    check(
+                        "Geth Clique PoA Support",
+                        True,
+                        f"Compatible {ver_str} at {active_bin} ({bin_origin}) - Clique PoA supported",
+                    )
+            else:
+                check("Geth version check", False, f"Could not parse version from: {active_bin}", level="warn")
+        except Exception as exc:
+            check("Geth executable check", False, f"Error running {active_bin}: {exc}", level="critical")
+
     # ── Environment ────────────────────────────────────────────
     section("Environment (.env)")
     root = Path(__file__).parent.parent

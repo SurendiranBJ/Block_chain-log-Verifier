@@ -48,6 +48,10 @@ Dashboard  MongoDB Alerts
 ### 1. Install dependencies
 ```bash
 pip install -r requirements.txt
+
+# IMPORTANT: Geth >= 1.14 removed Clique PoA block sealing.
+# Install pinned Geth v1.13.15 into ./bin/ (auto-downloads Windows/Linux/macOS binary):
+python scripts/download_geth.py
 ```
 
 ### 2. Configure environment & fresh validators
@@ -60,10 +64,14 @@ python scripts/setup_private_chain.py
 
 ### 3. Start Geth nodes
 ```bash
+# Via Bash:
 ./scripts/start_device1.sh   # Device 1 (primary validator)
 ./scripts/start_device2.sh   # Device 2 (independent validator)
 ./scripts/connect_nodes.sh   # Peer them
 ./scripts/verify_network.sh  # Confirm status
+
+# Or cross-platform / Windows:
+python scripts/start_nodes.py --all
 ```
 
 ### 4. Deploy V3 contract

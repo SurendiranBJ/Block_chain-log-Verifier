@@ -1,0 +1,8 @@
+# ============================================================
+# LogChain - Optional Azure Monitor Dependencies
+# Only needed on the friend laptop fetching Azure Activity logs.
+# Device 1 and Device 2 core systems DO NOT require this.
+# ============================================================
+azure-identity>=1.15.0
+azure-mgmt-monitor>=6.0.0
+azure-monitor-query>=1.2.0

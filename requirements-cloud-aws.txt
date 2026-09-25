@@ -1,0 +1,7 @@
+# ============================================================
+# LogChain - Optional AWS CloudTrail Dependencies
+# Only needed on the friend laptop fetching AWS logs.
+# Device 1 and Device 2 core systems DO NOT require this.
+# ============================================================
+boto3>=1.34.0
+botocore>=1.34.0
