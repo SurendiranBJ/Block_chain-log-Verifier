@@ -1,4 +1,4 @@
-# LogChain — Zero-Trust Cross-Cloud Log Integrity & Tamper Detection System
+# LogChain — Zero-Trust Cross-Cloud Log Integrity & Tamper Detection System!
 
 > "Cloud providers own the logs. Our system owns the proof of what those logs originally contained."
 > 
