@@ -1,174 +1,113 @@
-# LogChain — Zero-Trust Cross-Cloud Log Integrity & Tamper Detection System!!
+# LogChain — Private blockchain audit-log integrity
 
-> "Cloud providers own the logs. Our system owns the proof of what those logs originally contained."
-> 
-> "The blockchain protects the cryptographic commitment/proof. It does not magically make the original cloud log immutable."
-> 
-> "MongoDB is operational metadata only and is not a trusted cryptographic source."
+Connect an existing application's logs to a local integrity dashboard backed by a private Ethereum blockchain. LogChain preserves original log contents, anchors SHA-256 commitments, detects observed edits/deletions, and keeps an incident timeline even when a log is restored.
 
-A **tamper-evident**, **blockchain-anchored** log integrity system for cloud forensics. Built for hackathon demonstration with a clean local-first core and pluggable cloud adapters.
+**Create account → connect a log source → forward live logs → verify → retain tamper/restoration history.**
 
----
+The default network has one Clique validator. Optional observer nodes replicate the ledger; they are not additional validators. Python, SQLite and the included dashboard provide the local workflow without MongoDB or cloud accounts.
 
-## Architecture
+## Start
 
-```
-Cloud Logs / Local Simulator
-        |
-        v
- Log Getter Adapter (AWS / Azure / Local)
-        |
-        v
- Normalized Event Schema
-        |
-        v
- Canonical Serialization (deterministic UTF-8 JSON)
-        |
-        v
- SHA-256 per Event
-        |
-        v
- Merkle Batch Root
-        |
-        v
- LogIntegrityV3 (append-only Solidity contract)
-        |
-    +---+---+
-    |       |
-Device 1   Device 2 (independent validator)
-    |
-    v
- Verification Engine
-    |
- +--+--+
- |     |
-Dashboard  MongoDB Alerts
-```
+On Ubuntu, install Python 3.12 and its venv support. From a clone of this repository:
 
----
-
-## Quick Start
-
-### 1. Install dependencies
 ```bash
-pip install -r requirements.txt
-
-# IMPORTANT: Geth >= 1.14 removed Clique PoA block sealing.
-# Install pinned Geth v1.13.15 into ./bin/ (auto-downloads Windows/Linux/macOS binary):
-python scripts/download_geth.py
+bash scripts/start_local.sh
 ```
 
-### 2. Configure environment & fresh validators
+The launcher installs Python dependencies, downloads pinned Geth 1.13.15, creates fresh private-network keys on first use, deploys the existing Solidity V3 contract, and starts the dashboard:
+
+**http://127.0.0.1:8080**
+
+Open **Create account**, enter your name/email/password, then configure your application's log source during registration. Email identifies a local account; there is no email verification or delivery service.
+
+Choose **Watch an existing log file** for the full external tamper-monitoring flow. Enter its absolute path and select plain text, JSON Lines or a structured JSON event array. Download the supplied agent and source-specific connection config, then run the exact command shown in setup. Keep your application, agent and LogChain running.
+
+The agent forwards snapshots every two seconds; the dashboard refreshes automatically and the verifier runs on a one-second schedule. Blockchain confirmation and processing backlog add latency. Changes and restorations appear without clicking Verify now.
+
+See [the account/source guide](ACCOUNT_SOURCE_GUIDE.md) for formats, direct API integration, reconnecting and limits.
+
+Press Ctrl+C in the launcher terminal to stop. Subsequent starts preserve evidence and blockchain data. Do not run multiple launchers against one runtime directory or delete runtime data to troubleshoot.
+
+## Accounts and sources
+
+- Password authentication with salted scrypt hashes and expiring HttpOnly sessions.
+- Separate evidence/log directories and blockchain namespaces for each account.
+- Source-specific tokens for file agents or application backend API calls.
+- File snapshots preserve first commitments and reveal observed modifications, deletions, reordering and restorations.
+- Offline/missing/malformed sources appear unavailable, rather than verified from stale external contents.
+- Search, filters, before/after inspection, permanent incident timeline and evidence export.
+- Durable blockchain outbox and safe unchanged-event retries.
+- Background verification continues when the dashboard is closed.
+
+Existing pre-account records are available through **Open an existing token workspace**, using the token in `runtime/admin.token`. They are not automatically assigned to a new account.
+
+The optional Northstar test application is available explicitly:
+
 ```bash
-cp .env.example .env
-# Setup fresh validator keys & genesis (no hardcoded credentials):
-python scripts/setup_private_chain.py
-# Fill in: BLOCKCHAIN_PRIVATE_KEY, BLOCKCHAIN_ACCOUNT, FLASK_SECRET_KEY
+bash scripts/start_local.sh --demo
 ```
 
-### 3. Start Geth nodes
+It runs on http://127.0.0.1:8081 and sends records to the existing token workspace.
+
+## API integration
+
+Choose API mode when your application's backend can send structured events:
+
+```text
+POST /api/sources/SOURCE_ID/events
+Authorization: Bearer SOURCE_TOKEN
+Content-Type: application/json
+
+{"events":[{"event_id":"login-001","sequence":1,"timestamp":"2026-11-04T12:00:00Z","actor":"user-42","action":"login","message":"User signed in"}]}
+```
+
+Send stable IDs and increasing sequences. Unchanged retries are safe. Direct event ingestion protects the copy received by LogChain; use the file agent to detect later changes to the application's original file.
+
+## Verify the implementation
+
 ```bash
-# Via Bash:
-./scripts/start_device1.sh   # Device 1 (primary validator)
-./scripts/start_device2.sh   # Device 2 (independent validator)
-./scripts/connect_nodes.sh   # Peer them
-./scripts/verify_network.sh  # Confirm status
-
-# Or cross-platform / Windows:
-python scripts/start_nodes.py --all
+python3 -m unittest discover -s tests/local -v
+node tests/local/check_ui.js
+node --check localchain/static/app.js
+bash -n scripts/start_local.sh
 ```
 
-### 4. Deploy V3 contract
+For an explicitly labeled offline test ledger:
+
 ```bash
-./scripts/deploy_contract.sh
-# or: python3 scripts/deploy_contract.py
-# Add CONTRACT_ADDRESS= to .env
+bash scripts/start_local.sh --simulate
 ```
 
-### 5. Run demo
+Simulation uses a separate runtime directory and is not blockchain verification.
+
+After starting and deploying a real node, run:
+
 ```bash
-./scripts/run_demo.sh        # Generate -> Hash -> Merkle -> Anchor -> Verify
-python backend/app.py        # Start dashboard: http://localhost:5000
+.venv/bin/python -m localchain.setup smoke
 ```
 
-### 6. Demo attacks
-```bash
-# 1. Modify event in the middle:
-python scripts/modify_event.py --sequence 51
+The GitHub Actions workflow exercises core tests and real-node smoke/observer replication. Local validation covers 39 Python tests and JavaScript flow/syntax checks. Real browser rendering and real Ethereum execution were not verified in the restricted build session; see [validation details](docs/VALIDATION.md).
 
-# 2. Delete event in the middle (exact detection, zero cascading false alarms):
-python scripts/delete_event.py --sequence 51
+## Project layout
 
-# 3. Reorder events:
-python scripts/reorder_events.py --sequence-a 51 --sequence-b 52
+| Location | Purpose |
+| --- | --- |
+| `localchain/accounts.py` | Password accounts and workspace isolation |
+| `localchain/agent.py` | Downloadable standalone log-file forwarder |
+| `localchain/core.py` | Evidence, original comparisons, durable outbox and incident history |
+| `localchain/ledger.py` | Shared Ethereum writer and explicit simulation adapter |
+| `localchain/server.py` | Dashboard API, sessions and background monitoring |
+| `localchain/static/` | Account setup and integrity dashboard |
+| `localchain/setup.py` | Validator initialization, deployment, observers and smoke test |
+| `contracts/LogIntegrityV3.sol` | Append-only commitment contract |
+| `tests/local/` | Local account, agent, integrity and HTTP regression checks |
 
-# 4. Insert unexpected uncommitted event:
-python scripts/insert_event.py --sequence 51
+The earlier cloud implementation remains for reference, with its former README in [docs/LEGACY_CLOUD_README.md](docs/LEGACY_CLOUD_README.md). Use the local launcher for this account/source workflow.
 
-# Reset demo (preserves append-only blockchain, unique run case):
-./scripts/reset_demo.sh
-```
+## Boundaries
 
----
+Original log contents live in local evidence storage; cryptographic commitments and incident proofs are anchored on-chain. Blockchain provides tamper evidence relative to first received input, not proof that the input was truthful.
 
-## Pre-flight Check
-```bash
-python scripts/preflight_check.py
-```
+This version runs on one computer and binds to loopback. File snapshots target small log files under 900 KB and under the serialized request limit. Register a new source when rotating files. Plain-text identity uses physical line numbers; structured stable IDs give more precise deletion tracking. Keep each agent's state file across restarts. A change made and restored entirely between agent reads may be missed.
 
----
-
-## Test Suite
-```bash
-pytest tests/   # 67 unit & integration tests
-```
-
----
-
-## Project Structure
-
-```
-backend/           Core pipeline (canonical, hashing, merkle, blockchain, verifier, alerts)
-adapters/          Log getter adapters (local + AWS/Azure stubs)
-contracts/         LogIntegrityV3.sol (append-only, event identity protected)
-scripts/           Start/connect/deploy/demo/attack scripts
-demo/              Event generator + sample_logs/
-tests/             67-test pytest suite (unit + tests/integration/)
-docs/              ARCHITECTURE.md, FRIEND_INTEGRATION.md, DEMO_RUNBOOK.md, SECURITY.md
-legacy/            Original pre-refactor code (preserved for reference)
-.env.example       Configuration template
-```
-
----
-
-## For Cloud Adapter Contributors
-
-See [docs/FRIEND_INTEGRATION.md](docs/FRIEND_INTEGRATION.md).
-
-You only need to implement **two files**:
-- `adapters/aws_getter.py`
-- `adapters/azure_getter.py`
-
-The integrity pipeline (hashing, Merkle, blockchain, verification) does not need any changes.
-
----
-
-## Security Model
-
-**TAMPER-EVIDENT** — not tamper-proof.
-
-A privileged attacker may modify or delete cloud-side logs, but the original
-cryptographic commitment remains independently anchored on the separate integrity
-ledger, so later verification can detect changes.
-
-**Verification States:**
-`GREEN` | `MODIFIED` | `DELETED` | `UNEXPECTED` | `REORDERED` | `MISSING_COMMITMENT` | `BLOCKCHAIN_ERROR`
-
----
-
-## Chain Configuration
-
-- Chain ID: `12345`
-- Consensus: Clique (PoA)
-- Contract: `LogIntegrityV3` (append-only batch anchoring)
-- Genesis: `genesis.json`
+One validator depends on its signing key and chain data remaining trusted. The pinned legacy Geth/Clique setup is an educational private network. Review [multi-node instructions](docs/MULTI_NODE.md) and [local architecture](docs/LOCAL_ARCHITECTURE.md) for its trust and expansion model. Runtime data, keys, credentials and agent connection configs must remain outside version control.

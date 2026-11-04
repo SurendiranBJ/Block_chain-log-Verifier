@@ -1,0 +1,4 @@
+# The web server, SQLite store and simulator use Python's standard library.
+# These packages are required only for the real Ethereum network.
+web3==7.16.0
+py-solc-x==2.0.4

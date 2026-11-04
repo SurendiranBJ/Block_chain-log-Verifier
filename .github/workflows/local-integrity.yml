@@ -1,0 +1,90 @@
+name: Local audit integrity
+on:
+  push:
+    branches: [main, "codex/**"]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m unittest discover -s tests/local -v
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --check localchain/static/app.js
+      - run: node tests/local/check_ui.js
+      - run: bash -n scripts/start_local.sh
+  ethereum:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements-local.txt
+      - run: python scripts/download_geth.py
+      - run: python -m localchain.setup init
+      - name: Start single validator and wait for blocks
+        run: |
+          python -m localchain.setup start > /tmp/logchain-geth.log 2>&1 &
+          python - <<'PY'
+          import time
+          from web3 import Web3
+          w3 = Web3(Web3.HTTPProvider('http://127.0.0.1:8545'))
+          for _ in range(60):
+              try:
+                  if w3.eth.block_number > 0:
+                      break
+              except Exception:
+                  pass
+              time.sleep(1)
+          else:
+              raise SystemExit('Validator did not seal a block')
+          PY
+      - run: python -m localchain.setup deploy
+      - run: python -m localchain.setup smoke
+      - name: Start observer and verify replication
+        run: |
+          ENODE=$(bin/geth attach --exec 'admin.nodeInfo.enode' runtime/node/geth.ipc | tr -d '"')
+          ENODE=$(printf '%s' "$ENODE" | sed -E 's/@[^:]+:/@127.0.0.1:/')
+          python -m localchain.setup observer --enode "$ENODE" > /tmp/logchain-observer.log 2>&1 &
+          python - <<'PY'
+          import json, time
+          from web3 import Web3
+          from web3.middleware import ExtraDataToPOAMiddleware
+          cfg = json.load(open('runtime/chain.json'))
+          primary = Web3(Web3.HTTPProvider(cfg['rpc']))
+          observer = Web3(Web3.HTTPProvider('http://127.0.0.1:8546'))
+          for client in (primary, observer):
+              client.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
+          abi = json.load(open('backend/LogIntegrityV3_abi.json'))
+          original = primary.eth.contract(address=cfg['contract'], abi=abi)
+          expected = original.functions.getCaseBatches('LOCALCHAIN-V1').call()
+          for _ in range(90):
+              try:
+                  replica = observer.eth.contract(address=cfg['contract'], abi=abi)
+                  actual = replica.functions.getCaseBatches('LOCALCHAIN-V1').call()
+                  if expected == actual and actual:
+                      for key in actual:
+                          assert original.functions.getBatch('LOCALCHAIN-V1', key).call() == replica.functions.getBatch('LOCALCHAIN-V1', key).call()
+                      print('PASS: observer replicated every smoke-test commitment')
+                      break
+              except Exception:
+                  pass
+              time.sleep(1)
+          else:
+              raise SystemExit('Observer did not replicate commitments')
+          PY
+      - name: Diagnostics
+        if: failure()
+        run: |
+          tail -100 /tmp/logchain-geth.log || true
+          tail -100 /tmp/logchain-observer.log || true

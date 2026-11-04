@@ -69,3 +69,24 @@ Thumbs.db
 *.tmp
 *.bak
 scratch/
+
+
+# Local audit platform runtime / credentials
+runtime*/
+.venv/
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+admin.token
+chain.json
+validator.password
+workspace.id
+demo-source.json
+demo-originals.json
+
+# Account-source configs, agent state and upgrade backups
+upgrade-backups/
+live-monitor-backup-*/
+logchain-*.json
+logchain-connection*.json
+*.upgrade-tmp

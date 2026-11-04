@@ -1,0 +1,32 @@
+'use strict';
+const fs=require('fs'),vm=require('vm'),assert=require('assert');
+const html=fs.readFileSync('localchain/static/index.html','utf8');
+const ids=[...html.matchAll(/\bid="([^"]+)"/g)].map(x=>x[1]);
+assert.equal(new Set(ids).size,ids.length,'HTML IDs must be unique');
+const elements=new Map();
+function element(id){return {id,hidden:false,value:'',textContent:'',className:'',dataset:{},disabled:false,required:false,innerHTML:'',outerHTML:'',classList:{toggle(){}},setAttribute(){},querySelectorAll(){return []},reportValidity(){return true},click(){},showModal(){},close(){}}}
+for(const id of ids)elements.set('#'+id,element(id));
+elements.get('#signup-mode').value='file';elements.get('#source-mode').value='file';elements.get('#signup-format').value='text';elements.get('#source-format').value='text';
+for(const k of ['workspace','onboarding'])elements.get('#'+k).hidden=true;
+for(const key of ['.workspace-avatar','.top-right .avatar'])elements.set(key,element(key));
+let user={id:'a',name:'Vijay',email:'vijay@example.test'},calls=[];
+let snapshot={user,status:'NO_DATA',checked_at:null,error:'',network:{mode:'SIMULATION',connected:true},logs:[],sources:[],history:[]};
+const document={body:{dataset:{}},hidden:false,querySelector(selector){if(!elements.has(selector)){if(['#setup-path','#setup-format'].includes(selector))elements.set(selector,element(selector));else throw Error('Missing DOM element '+selector)}return elements.get(selector)},querySelectorAll(selector){return []},addEventListener(){},createElement(){return element('download')}};
+const context=vm.createContext({document,window:{addEventListener(){}},location:{hash:'',origin:'http://127.0.0.1:8080'},history:{replaceState(){}},setInterval(){},setTimeout(){},clearTimeout(){},Blob,URL,AbortSignal,confirm(){return true},console,fetch:async(path,options)=>{calls.push([path,options]);if(path==='/api/signup')return {ok:true,status:201,json:async()=>({user,source:{id:'abcdef123456',name:'My project',mode:'file',token:'source-secret'}})};return {ok:true,status:200,json:async()=>snapshot}}});
+vm.runInContext(fs.readFileSync('localchain/static/app.js','utf8'),context);
+(async()=>{
+ await vm.runInContext('refresh()',context);
+ elements.get('#auth-signup').onclick();assert.equal(elements.get('#signup-form').hidden,false);
+ elements.get('#signup-next').onclick();assert.equal(elements.get('#source-step').hidden,false);
+ elements.get('#signup-name').value='Vijay';elements.get('#signup-email').value='vijay@example.test';elements.get('#signup-password').value='strong password here';elements.get('#signup-source').value='My project';elements.get('#signup-path').value='/tmp/my-project.log';
+ await elements.get('#signup-form').onsubmit({preventDefault(){},submitter:element('submit')});
+ assert.equal(elements.get('#onboarding').hidden,false);assert.equal(elements.get('#workspace').hidden,true);
+ assert.equal(elements.get('#signup-password').value,'');
+ assert.match(elements.get('#setup-instructions').innerHTML,/my-project.log/);
+ assert.match(elements.get('#setup-instructions').innerHTML,/logchain-abcdef123456-/);
+ await elements.get('#finish-setup').onclick();assert.equal(elements.get('#onboarding').hidden,true);assert.equal(elements.get('#workspace').hidden,false);assert.equal(elements.get('#workspace-name').textContent,'Vijay');
+ snapshot={...snapshot,status:'ALERT',logs:[{source:'abcdef123456',source_name:'My project',event_id:'line-1',state:'MODIFIED',current:{action:'log',actor:'app',timestamp:'2026-11-04T00:00:00Z'},expected_hash:'abc',changes:['message']} ]};
+ await vm.runInContext('refresh()',context);assert.match(elements.get('#log-table').innerHTML,/MODIFIED/);assert.equal(elements.get('#integrity-title').textContent,'Changes need your attention');
+ assert(!calls.some(([path])=>path==='/api/verify'),'Dashboard auto-refresh must not need Verify now');
+ console.log('UI flow checks passed: account → source → config → dashboard → automatic change display.');
+})().catch(e=>{console.error(e);process.exitCode=1});
